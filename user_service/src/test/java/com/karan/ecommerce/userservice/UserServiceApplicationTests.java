@@ -1,4 +1,4 @@
-package com.karan.ecommerce.userservice.user_service;
+package com.karan.ecommerce.userservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
