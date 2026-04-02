@@ -8,8 +8,8 @@ spring:
   datasource:
     url: jdbc:h2:mem:userdb
     driver-class-name: org.h2.Driver
-    username: postgres
-    password: Park@0212
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
 
   jpa:
     hibernate:

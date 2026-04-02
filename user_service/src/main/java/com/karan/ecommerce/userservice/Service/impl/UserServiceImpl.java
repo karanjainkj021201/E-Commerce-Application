@@ -3,6 +3,7 @@ package com.karan.ecommerce.userservice.Service.impl;
 import com.karan.ecommerce.userservice.DTO.UserRequest;
 import com.karan.ecommerce.userservice.DTO.UserResponse;
 import com.karan.ecommerce.userservice.Entity.UserEntity;
+import com.karan.ecommerce.userservice.Exception.DuplicateUserException;
 import com.karan.ecommerce.userservice.Exception.UserNotFoundException;
 import com.karan.ecommerce.userservice.Repository.UserRepository;
 import com.karan.ecommerce.userservice.Service.UserService;
@@ -21,6 +22,13 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserResponse createUser(UserRequest request) {
+
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new DuplicateUserException(
+                    "User with email " + request.getEmail() + " already exists"
+            );
+        }
+
         UserEntity user = new UserEntity();
         user.setName(request.getName());
         user.setEmail(request.getEmail());
@@ -50,6 +58,13 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateUser(Long id, UserRequest request) {
         UserEntity user = userRepository.findById(id)
                 .orElseThrow(() -> new UserNotFoundException(id));
+
+        if (!user.getEmail().equalsIgnoreCase(request.getEmail())
+                && userRepository.existsByEmail(request.getEmail())) {
+            throw new DuplicateUserException(
+                    "User with email " + request.getEmail() + " already exists"
+            );
+        }
 
         user.setName(request.getName());
         user.setEmail(request.getEmail());

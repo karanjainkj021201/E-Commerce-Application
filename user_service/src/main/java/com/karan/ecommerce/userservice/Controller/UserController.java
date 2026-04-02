@@ -3,6 +3,7 @@ package com.karan.ecommerce.userservice.Controller;
 import com.karan.ecommerce.userservice.DTO.UserRequest;
 import com.karan.ecommerce.userservice.DTO.UserResponse;
 import com.karan.ecommerce.userservice.Service.UserService;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -18,7 +19,7 @@ public class UserController {
     }
 
     @PostMapping
-    public UserResponse createUser(@RequestBody UserRequest request) {
+    public UserResponse createUser(@Valid @RequestBody UserRequest request) {
         return userService.createUser(request);
     }
 
@@ -33,7 +34,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}")
-    public UserResponse updateUser(@PathVariable Long id,
+    public UserResponse updateUser(@Valid @PathVariable Long id,
                                    @RequestBody UserRequest request) {
         return userService.updateUser(id, request);
     }
