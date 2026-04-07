@@ -2,6 +2,8 @@ package com.karan.ecommerce.userservice.DTO;
 
 import lombok.Getter;
 
+import java.time.LocalDateTime;
+
 @Getter
 public class UserResponse {
 
@@ -9,9 +11,12 @@ public class UserResponse {
     private String name;
     private String email;
     private String phone;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
     public UserResponse() {
     }
+
 
     public UserResponse(Long id, String name, String email, String phone) {
         this.id = id;
@@ -19,5 +24,4 @@ public class UserResponse {
         this.email = email;
         this.phone = phone;
     }
-
 }

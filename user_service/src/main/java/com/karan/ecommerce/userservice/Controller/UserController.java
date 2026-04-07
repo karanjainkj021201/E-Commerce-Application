@@ -5,6 +5,8 @@ import com.karan.ecommerce.userservice.DTO.UserResponse;
 import com.karan.ecommerce.userservice.Service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.List;
 
@@ -42,5 +44,16 @@ public class UserController {
     @DeleteMapping("/{id}")
     public void deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
+    }
+
+    @PostMapping("/me")
+    public UserResponse createMyProfile(@AuthenticationPrincipal Jwt jwt,
+                                        @Valid @RequestBody UserRequest request) {
+        return userService.createMyProfile(jwt.getSubject(), request);
+    }
+
+    @GetMapping("/me")
+    public UserResponse getMyProfile(@AuthenticationPrincipal Jwt jwt) {
+        return userService.getMyProfile(jwt.getSubject());
     }
 }

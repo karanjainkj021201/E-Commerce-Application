@@ -22,20 +22,46 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserResponse createUser(UserRequest request) {
-
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateUserException(
-                    "User with email " + request.getEmail() + " already exists"
-            );
+            throw new DuplicateUserException("User with email " + request.getEmail() + " already exists");
         }
 
         UserEntity user = new UserEntity();
+        user.setKeycloakUserId("TEMP-NO-KEYCLOAK");
         user.setName(request.getName());
         user.setEmail(request.getEmail());
         user.setPhone(request.getPhone());
 
         UserEntity savedUser = userRepository.save(user);
         return mapToResponse(savedUser);
+    }
+
+    @Override
+    public UserResponse createMyProfile(String keycloakUserId, UserRequest request) {
+        if (userRepository.existsByKeycloakUserId(keycloakUserId)) {
+            throw new DuplicateUserException("Profile already exists for this Keycloak user");
+        }
+
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new DuplicateUserException("User with email " + request.getEmail() + " already exists");
+        }
+
+        UserEntity user = new UserEntity();
+        user.setKeycloakUserId(keycloakUserId);
+        user.setName(request.getName());
+        user.setEmail(request.getEmail());
+        user.setPhone(request.getPhone());
+
+        UserEntity savedUser = userRepository.save(user);
+        return mapToResponse(savedUser);
+    }
+
+    @Override
+    public UserResponse getMyProfile(String keycloakUserId) {
+        UserEntity user = userRepository.findByKeycloakUserId(keycloakUserId)
+                .orElseThrow(() -> new UserNotFoundException("Profile not found for logged-in user"));
+
+        return mapToResponse(user);
     }
 
     @Override
@@ -61,9 +87,7 @@ public class UserServiceImpl implements UserService {
 
         if (!user.getEmail().equalsIgnoreCase(request.getEmail())
                 && userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateUserException(
-                    "User with email " + request.getEmail() + " already exists"
-            );
+            throw new DuplicateUserException("User with email " + request.getEmail() + " already exists");
         }
 
         user.setName(request.getName());
