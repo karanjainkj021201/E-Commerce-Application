@@ -2,8 +2,8 @@ package com.karan.ecommerce.userservice.Service;
 
 import com.karan.ecommerce.userservice.DTO.UserRequest;
 import com.karan.ecommerce.userservice.DTO.UserResponse;
-
-import java.util.List;
+import com.karan.ecommerce.userservice.Entity.enums.UserStatus;
+import org.springframework.data.domain.Page;
 
 public interface UserService {
 
@@ -11,13 +11,19 @@ public interface UserService {
 
     UserResponse getUserById(Long id);
 
-    List<UserResponse> getAllUsers();
+    Page<UserResponse> getAllUsers(int page, int size);
 
     UserResponse updateUser(Long id, UserRequest request);
 
-    void deleteUser(Long id);
+    void deactivateUser(Long id);
+
+    UserResponse updateUserStatus(Long id, UserStatus status);
 
     UserResponse createMyProfile(String keycloakUserId, UserRequest request);
 
     UserResponse getMyProfile(String keycloakUserId);
+
+    UserResponse updateMyProfile(String keycloakUserId, UserRequest request);
+
+    void deactivateMyProfile(String keycloakUserId);
 }
