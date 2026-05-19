@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+out/
+
+# Java / Spring Boot
+target/
+build/
+.gradle/
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local configs
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# H2 local DB files
+*.mv.db
+*.trace.db
+*.lock.db
+^X
+
