@@ -35,7 +35,9 @@ public class OrderServiceImpl implements OrderService {
     private final ProductClient productClient;
     private final OrderEventPublisher eventPublisher;
 
-    public OrderServiceImpl(OrderRepository orderRepository, ProductClient productClient, OrderEventPublisher eventPublisher) {
+    public OrderServiceImpl(OrderRepository orderRepository,
+                            ProductClient productClient,
+                            OrderEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.productClient = productClient;
         this.eventPublisher = eventPublisher;
@@ -62,11 +64,13 @@ public class OrderServiceImpl implements OrderService {
         for (Map.Entry<Long, Integer> entry : productQuantityMap.entrySet()) {
             Long productId = entry.getKey();
             Integer quantity = entry.getValue();
+
             ProductSnapshotResponse snapshot = productClient.getProductSnapshot(productId, authorizationHeader);
 
             if (!snapshot.isAvailableForOrder()) {
                 throw new BadRequestException("Product " + productId + " is not available for ordering");
             }
+
             if (snapshot.getPrice() == null) {
                 throw new BadRequestException("Product " + productId + " does not have a valid price");
             }
@@ -88,31 +92,40 @@ public class OrderServiceImpl implements OrderService {
             item.setCurrency(snapshot.getCurrency());
             item.setQuantity(quantity);
             item.setLineTotal(lineTotal);
+
             order.addItem(item);
         }
 
         BigDecimal shippingFee = request.getShippingFee() == null ? BigDecimal.ZERO : request.getShippingFee();
+
         order.setSubtotal(subtotal);
         order.setShippingFee(shippingFee);
         order.setTotalAmount(subtotal.add(shippingFee));
         order.setCurrency(currency == null ? "INR" : currency);
 
         OrderEntity savedOrder = orderRepository.save(order);
+
         eventPublisher.publishOrderCreated(savedOrder);
+
         return mapToResponse(savedOrder);
     }
 
     @Override
     @Transactional(readOnly = true)
     public OrderResponse getMyOrder(Long id, String keycloakUserId) {
-        return mapToResponse(orderRepository.findByIdAndKeycloakUserId(id, keycloakUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found for logged-in user")));
+        OrderEntity order = orderRepository.findByIdAndKeycloakUserId(id, keycloakUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found for logged-in user"));
+
+        return mapToResponse(order);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<OrderResponse> getMyOrders(String keycloakUserId, int page, int size) {
-        return orderRepository.findByKeycloakUserIdOrderByCreatedAtDesc(keycloakUserId, PageRequest.of(page, size))
+        return orderRepository.findByKeycloakUserIdOrderByCreatedAtDesc(
+                        keycloakUserId,
+                        PageRequest.of(page, size)
+                )
                 .map(this::mapToResponse);
     }
 
@@ -121,8 +134,19 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse cancelMyOrder(Long id, String keycloakUserId) {
         OrderEntity order = orderRepository.findByIdAndKeycloakUserId(id, keycloakUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found for logged-in user"));
-        cancelOrder(order, "Cancelled by customer");
-        return mapToResponse(orderRepository.save(order));
+
+        OrderStatus oldStatus = order.getStatus();
+        String reason = "Cancelled by customer";
+
+        cancelOrder(order, reason);
+
+        OrderEntity savedOrder = orderRepository.save(order);
+
+        if (oldStatus != OrderStatus.CANCELLED && savedOrder.getStatus() == OrderStatus.CANCELLED) {
+            eventPublisher.publishOrderCancelled(savedOrder, reason);
+        }
+
+        return mapToResponse(savedOrder);
     }
 
     @Override
@@ -134,33 +158,56 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional(readOnly = true)
     public Page<OrderResponse> getOrdersForAdmin(int page, int size) {
-        return orderRepository.findAll(PageRequest.of(page, size)).map(this::mapToResponse);
+        return orderRepository.findAll(PageRequest.of(page, size))
+                .map(this::mapToResponse);
     }
 
     @Override
     @Transactional
     public OrderResponse updateOrderStatusForAdmin(Long id, OrderStatus status, String reason) {
         OrderEntity order = getOrderEntityById(id);
+
+        OrderStatus oldStatus = order.getStatus();
+
         order.setStatus(status);
         order.setFailureReason(blankToNull(reason));
+
         if (status == OrderStatus.CANCELLED) {
             order.setCancelledAt(LocalDateTime.now());
         }
+
         if (status == OrderStatus.DELIVERED) {
             order.setDeliveredAt(LocalDateTime.now());
             order.setShippingStatus(ShippingStatus.DELIVERED);
         }
-        return mapToResponse(orderRepository.save(order));
+
+        OrderEntity savedOrder = orderRepository.save(order);
+
+        if (oldStatus != OrderStatus.CANCELLED && status == OrderStatus.CANCELLED) {
+            String cancellationReason = blankToNull(reason) == null
+                    ? "Cancelled by admin"
+                    : blankToNull(reason);
+
+            eventPublisher.publishOrderCancelled(savedOrder, cancellationReason);
+        }
+
+        return mapToResponse(savedOrder);
     }
 
     @Override
     @Transactional
     public void markPaymentSucceeded(Long orderId, String paymentReference, String gatewayReference) {
         OrderEntity order = getOrderEntityById(orderId);
-        if (isTerminal(order)) return;
+
+        if (isTerminal(order)) {
+            return;
+        }
+
         order.setPaymentStatus(PaymentStatus.PAYMENT_SUCCEEDED);
         order.setPaymentReference(firstNonBlank(paymentReference, gatewayReference));
+
         tryConfirmOrder(order);
+
         orderRepository.save(order);
     }
 
@@ -168,10 +215,15 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markPaymentFailed(Long orderId, String failureReason) {
         OrderEntity order = getOrderEntityById(orderId);
-        if (isTerminal(order)) return;
+
+        if (isTerminal(order)) {
+            return;
+        }
+
         order.setPaymentStatus(PaymentStatus.PAYMENT_FAILED);
         order.setStatus(OrderStatus.PAYMENT_FAILED);
         order.setFailureReason(blankToNull(failureReason));
+
         orderRepository.save(order);
     }
 
@@ -179,9 +231,15 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markStockReserved(Long orderId, String reservationId) {
         OrderEntity order = getOrderEntityById(orderId);
-        if (isTerminal(order)) return;
+
+        if (isTerminal(order)) {
+            return;
+        }
+
         order.setInventoryStatus(InventoryStatus.RESERVED);
+
         tryConfirmOrder(order);
+
         orderRepository.save(order);
     }
 
@@ -189,10 +247,15 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markStockReservationFailed(Long orderId, String failureReason) {
         OrderEntity order = getOrderEntityById(orderId);
-        if (isTerminal(order)) return;
+
+        if (isTerminal(order)) {
+            return;
+        }
+
         order.setInventoryStatus(InventoryStatus.RESERVATION_FAILED);
         order.setStatus(OrderStatus.STOCK_FAILED);
         order.setFailureReason(blankToNull(failureReason));
+
         orderRepository.save(order);
     }
 
@@ -200,12 +263,17 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markShipmentCreated(Long orderId, String shipmentId, String carrier, String trackingNumber) {
         OrderEntity order = getOrderEntityById(orderId);
-        if (isTerminal(order)) return;
+
+        if (isTerminal(order)) {
+            return;
+        }
+
         order.setShipmentId(shipmentId);
         order.setCarrier(carrier);
         order.setTrackingNumber(trackingNumber);
         order.setShippingStatus(ShippingStatus.CREATED);
         order.setStatus(OrderStatus.SHIPMENT_CREATED);
+
         orderRepository.save(order);
     }
 
@@ -213,12 +281,17 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markShipmentDelivered(Long orderId, String shipmentId, String trackingNumber) {
         OrderEntity order = getOrderEntityById(orderId);
-        if (order.getStatus() == OrderStatus.CANCELLED) return;
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+
         order.setShipmentId(firstNonBlank(shipmentId, order.getShipmentId()));
         order.setTrackingNumber(firstNonBlank(trackingNumber, order.getTrackingNumber()));
         order.setShippingStatus(ShippingStatus.DELIVERED);
         order.setStatus(OrderStatus.DELIVERED);
         order.setDeliveredAt(LocalDateTime.now());
+
         orderRepository.save(order);
     }
 
@@ -226,8 +299,10 @@ public class OrderServiceImpl implements OrderService {
         if (order.getPaymentStatus() == PaymentStatus.PAYMENT_SUCCEEDED
                 && order.getInventoryStatus() == InventoryStatus.RESERVED
                 && order.getStatus() == OrderStatus.CREATED) {
+
             order.setStatus(OrderStatus.CONFIRMED);
             order.setConfirmedAt(LocalDateTime.now());
+
             eventPublisher.publishOrderConfirmed(order);
         }
     }
@@ -236,12 +311,15 @@ public class OrderServiceImpl implements OrderService {
         if (order.getStatus() == OrderStatus.DELIVERED) {
             throw new BadRequestException("Delivered order cannot be cancelled");
         }
+
         if (order.getStatus() == OrderStatus.CANCELLED) {
             return;
         }
+
         if (order.getStatus() == OrderStatus.SHIPMENT_CREATED) {
             throw new BadRequestException("Shipment already created. Please use return/refund flow later.");
         }
+
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelledAt(LocalDateTime.now());
         order.setFailureReason(reason);
@@ -256,7 +334,11 @@ public class OrderServiceImpl implements OrderService {
 
     private Map<Long, Integer> mergeDuplicateProducts(CreateOrderRequest request) {
         Map<Long, Integer> merged = new LinkedHashMap<>();
-        request.getItems().forEach(item -> merged.merge(item.getProductId(), item.getQuantity(), Integer::sum));
+
+        request.getItems().forEach(item ->
+                merged.merge(item.getProductId(), item.getQuantity(), Integer::sum)
+        );
+
         return merged;
     }
 
@@ -334,12 +416,18 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private String blankToNull(String value) {
-        if (value == null || value.trim().isEmpty()) return null;
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+
         return value.trim();
     }
 
     private String firstNonBlank(String first, String second) {
-        if (first != null && !first.trim().isEmpty()) return first.trim();
+        if (first != null && !first.trim().isEmpty()) {
+            return first.trim();
+        }
+
         return blankToNull(second);
     }
 }

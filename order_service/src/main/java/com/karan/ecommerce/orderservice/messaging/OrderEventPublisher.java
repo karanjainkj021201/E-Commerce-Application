@@ -2,6 +2,7 @@ package com.karan.ecommerce.orderservice.messaging;
 
 import com.karan.ecommerce.orderservice.entity.OrderEntity;
 import com.karan.ecommerce.orderservice.entity.OrderItemEntity;
+import com.karan.ecommerce.orderservice.event.OrderCancelledEvent;
 import com.karan.ecommerce.orderservice.event.OrderConfirmedEvent;
 import com.karan.ecommerce.orderservice.event.OrderCreatedEvent;
 import com.karan.ecommerce.orderservice.event.OrderItemEvent;
@@ -31,6 +32,7 @@ public class OrderEventPublisher {
                 mapItems(order.getItems()),
                 LocalDateTime.now()
         );
+
         kafkaTemplate.send(KafkaTopics.ORDER_CREATED, order.getId().toString(), event);
     }
 
@@ -44,7 +46,23 @@ public class OrderEventPublisher {
                 mapItems(order.getItems()),
                 LocalDateTime.now()
         );
+
         kafkaTemplate.send(KafkaTopics.ORDER_CONFIRMED, order.getId().toString(), event);
+    }
+
+    public void publishOrderCancelled(OrderEntity order, String reason) {
+        OrderCancelledEvent event = new OrderCancelledEvent(
+                order.getId(),
+                order.getOrderNumber(),
+                order.getKeycloakUserId(),
+                order.getTotalAmount(),
+                order.getCurrency(),
+                reason,
+                mapItems(order.getItems()),
+                LocalDateTime.now()
+        );
+
+        kafkaTemplate.send(KafkaTopics.ORDER_CANCELLED, order.getId().toString(), event);
     }
 
     private List<OrderItemEvent> mapItems(List<OrderItemEntity> items) {

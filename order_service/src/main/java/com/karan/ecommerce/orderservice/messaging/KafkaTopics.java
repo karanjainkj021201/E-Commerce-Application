@@ -12,4 +12,5 @@ public final class KafkaTopics {
     public static final String ORDER_CONFIRMED = "OrderConfirmed";
     public static final String SHIPMENT_CREATED = "ShipmentCreated";
     public static final String SHIPMENT_DELIVERED = "ShipmentDelivered";
+    public static final String ORDER_CANCELLED = "OrderCancelled";
 }

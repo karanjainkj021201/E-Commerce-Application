@@ -50,4 +50,9 @@ public class KafkaConfig {
     public NewTopic shipmentDeliveredTopic() {
         return TopicBuilder.name(KafkaTopics.SHIPMENT_DELIVERED).partitions(1).replicas(1).build();
     }
+
+    @Bean
+    public NewTopic orderCancelledTopic() {
+        return TopicBuilder.name(KafkaTopics.ORDER_CANCELLED).partitions(1).replicas(1).build();
+    }
 }
