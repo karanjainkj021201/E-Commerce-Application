@@ -1,1 +1,19 @@
 .DS_Store
+
+# macOS
+.DS_Store
+
+# IntelliJ
+.idea/
+*.iml
+**/.idea/
+**/*.iml
+
+# Maven / Java build output
+target/
+**/target/
+out/
+**/out/
+
+# Logs
+*.log
