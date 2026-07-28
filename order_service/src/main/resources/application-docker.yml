@@ -1,0 +1,50 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: jdbc:h2:file:/data/orderdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://keycloak:8080/realms/ecommerce
+
+  kafka:
+    bootstrap-servers: kafka:9092
+
+services:
+  product:
+    base-url: http://product-service:8080
+    service-token:
+
+  inventory:
+    url: http://inventory-service:8080
+
+  payment:
+    url: http://payment-service:8080
+
+  user:
+    url: http://user-service:8080
