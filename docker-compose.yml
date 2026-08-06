@@ -28,6 +28,17 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+      
     networks:
       - ecommerce-network
 
@@ -107,6 +118,35 @@ services:
     networks:
       - ecommerce-network
 
+  shipping-service:
+    build:
+      context: ./shipping_service
+      dockerfile: Dockerfile
+
+    container_name: shipping-service
+
+    ports:
+      - "8086:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+      SHIPPING_EVENTS_ENABLED: "true"
+
+    depends_on:
+      - kafka
+      - keycloak
+
+    volumes:
+      - shipping-data:/data
+
+    networks:
+      - ecommerce-network
+
+    restart: unless-stopped
+
 networks:
   ecommerce-network:
 
@@ -118,4 +158,5 @@ volumes:
   order_data:
   inventory_data:
   payment_data:
+  shipping-data:
   

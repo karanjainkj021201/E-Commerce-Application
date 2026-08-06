@@ -17,3 +17,6 @@ out/
 
 # Logs
 *.log
+**/.DS_Store
+*.mv.db
+*.trace.db

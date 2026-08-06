@@ -9,6 +9,7 @@ import com.karan.ecommerce.inventoryservice.entity.enums.LedgerMovementType;
 import com.karan.ecommerce.inventoryservice.entity.enums.ReservationStatus;
 import com.karan.ecommerce.inventoryservice.event.OrderCancelledEvent;
 import com.karan.ecommerce.inventoryservice.event.OrderCreatedEvent;
+import com.karan.ecommerce.inventoryservice.event.OrderConfirmedEvent;
 import com.karan.ecommerce.inventoryservice.event.OrderItemEvent;
 import com.karan.ecommerce.inventoryservice.exception.BadRequestException;
 import com.karan.ecommerce.inventoryservice.exception.ResourceNotFoundException;
@@ -30,12 +31,18 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @Service
 public class InventoryServiceImpl implements InventoryService {
 
+    private static final Logger LOGGER = Logger.getLogger(InventoryServiceImpl.class.getName());
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final DateTimeFormatter RESERVATION_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+    private record ExpiredReservationResult(Long orderId) {
+    }
 
     private final StockBalanceRepository stockBalanceRepository;
     private final StockReservationRepository stockReservationRepository;
@@ -43,13 +50,15 @@ public class InventoryServiceImpl implements InventoryService {
     private final InventoryEventPublisher eventPublisher;
     private final TransactionTemplate transactionTemplate;
     private final String defaultWarehouseCode;
+    private final int reservationHoldMinutes;
 
     public InventoryServiceImpl(StockBalanceRepository stockBalanceRepository,
                                 StockReservationRepository stockReservationRepository,
                                 InventoryLedgerRepository inventoryLedgerRepository,
                                 InventoryEventPublisher eventPublisher,
                                 TransactionTemplate transactionTemplate,
-                                @Value("${inventory.default-warehouse:WH-DEFAULT}") String defaultWarehouseCode) {
+                                @Value("${inventory.default-warehouse:WH-DEFAULT}") String defaultWarehouseCode,
+                                @Value("${inventory.reservation-hold-minutes:10}") int reservationHoldMinutes) {
         this.stockBalanceRepository = stockBalanceRepository;
         this.stockReservationRepository = stockReservationRepository;
         this.inventoryLedgerRepository = inventoryLedgerRepository;
@@ -58,6 +67,7 @@ public class InventoryServiceImpl implements InventoryService {
         this.defaultWarehouseCode = defaultWarehouseCode == null || defaultWarehouseCode.trim().isEmpty()
                 ? "WH-DEFAULT"
                 : defaultWarehouseCode.trim().toUpperCase();
+        this.reservationHoldMinutes = Math.max(1, reservationHoldMinutes);
     }
 
     @Override
@@ -175,6 +185,10 @@ public class InventoryServiceImpl implements InventoryService {
             StockReservationEntity existing = stockReservationRepository.findByOrderId(request.getOrderId()).orElse(null);
             if (existing != null) {
                 if (existing.getStatus() == ReservationStatus.RESERVED) {
+                    if (isDueForExpiry(existing, LocalDateTime.now())) {
+                        throw new BadRequestException("Reservation already expired for order "
+                                + request.getOrderId() + " and is waiting for the expiry scan");
+                    }
                     return mapReservationToResponse(existing);
                 }
                 if (existing.getStatus() == ReservationStatus.FAILED) {
@@ -195,6 +209,7 @@ public class InventoryServiceImpl implements InventoryService {
         reservation.setOrderNumber(blankToNull(request.getOrderNumber()));
         reservation.setWarehouseCode(warehouseCode);
         reservation.setStatus(ReservationStatus.RESERVED);
+        reservation.setExpiresAt(LocalDateTime.now().plusMinutes(reservationHoldMinutes));
 
         for (ReserveInventoryItemRequest item : mergedItems.values()) {
             StockBalanceEntity stock = stockBalanceRepository
@@ -233,11 +248,25 @@ public class InventoryServiceImpl implements InventoryService {
 
     @Override
     @Transactional
-    public ReservationResponse releaseReservation(String reservationNumber, String reason) {
-        StockReservationEntity reservation = stockReservationRepository.findByReservationNumber(normalizeReservation(reservationNumber))
-                .orElseThrow(() -> new ResourceNotFoundException("Reservation not found for number " + reservationNumber));
+    public ReservationResponse commitReservation(String reservationNumber) {
+        StockReservationEntity reservation = stockReservationRepository
+                .findByReservationNumberForUpdate(normalizeReservation(reservationNumber))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Reservation not found for number " + reservationNumber));
 
-        if (reservation.getStatus() == ReservationStatus.RELEASED) {
+        return mapReservationToResponse(commitReservationEntity(reservation, LocalDateTime.now()));
+    }
+
+    @Override
+    @Transactional
+    public ReservationResponse releaseReservation(String reservationNumber, String reason) {
+        StockReservationEntity reservation = stockReservationRepository
+                .findByReservationNumberForUpdate(normalizeReservation(reservationNumber))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Reservation not found for number " + reservationNumber));
+
+        if (reservation.getStatus() == ReservationStatus.RELEASED
+                || reservation.getStatus() == ReservationStatus.EXPIRED) {
             return mapReservationToResponse(reservation);
         }
 
@@ -245,28 +274,61 @@ public class InventoryServiceImpl implements InventoryService {
             throw new BadRequestException("Failed reservation cannot be released");
         }
 
-        for (StockReservationItemEntity item : reservation.getItems()) {
-            StockBalanceEntity stock = stockBalanceRepository.findByIdForUpdate(item.getStockBalance().getId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Stock not found for id " + item.getStockBalance().getId()));
+        String resolvedReason = blankToNull(reason) == null ? "Reservation released" : reason.trim();
 
-            int newReservedQuantity = stock.getReservedQuantity() - item.getQuantity();
-            if (newReservedQuantity < 0) {
-                throw new BadRequestException("Reserved quantity cannot become negative for product " + stock.getProductId());
-            }
-
-            stock.setReservedQuantity(newReservedQuantity);
-            StockBalanceEntity savedStock = stockBalanceRepository.save(stock);
-
-            addLedger(savedStock, LedgerMovementType.RELEASE_RESERVATION, item.getQuantity(), "RESERVATION",
-                    reservation.getReservationNumber(),
-                    blankToNull(reason) == null ? "Reservation released" : reason);
+        if (reservation.getStatus() == ReservationStatus.RESERVED) {
+            releaseReservedItems(
+                    reservation,
+                    ReservationStatus.RELEASED,
+                    LedgerMovementType.RELEASE_RESERVATION,
+                    resolvedReason
+            );
+        } else if (reservation.getStatus() == ReservationStatus.COMMITTED) {
+            restockCommittedItems(reservation, resolvedReason);
+            reservation.setStatus(ReservationStatus.RELEASED);
+            reservation.setReleasedAt(LocalDateTime.now());
+            reservation.setReleaseReason(resolvedReason);
+            reservation.setExpiresAt(null);
         }
 
-        reservation.setStatus(ReservationStatus.RELEASED);
-        reservation.setReleasedAt(LocalDateTime.now());
-        reservation.setReleaseReason(blankToNull(reason));
-
         return mapReservationToResponse(stockReservationRepository.save(reservation));
+    }
+
+    @Override
+    @Transactional
+    public ReservationResponse expireReservation(String reservationNumber) {
+        StockReservationEntity reservation = stockReservationRepository
+                .findByReservationNumberForUpdate(normalizeReservation(reservationNumber))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Reservation not found for number " + reservationNumber));
+
+        if (reservation.getStatus() == ReservationStatus.EXPIRED) {
+            return mapReservationToResponse(reservation);
+        }
+
+        if (reservation.getStatus() != ReservationStatus.RESERVED) {
+            throw new BadRequestException("Only RESERVED reservations can expire. Current status: "
+                    + reservation.getStatus());
+        }
+
+        if (!isDueForExpiry(reservation, LocalDateTime.now())) {
+            throw new BadRequestException("Reservation is not due to expire until " + reservation.getExpiresAt());
+        }
+
+        String reason = "Reservation expired before order confirmation";
+        releaseReservedItems(
+                reservation,
+                ReservationStatus.EXPIRED,
+                LedgerMovementType.EXPIRE_RESERVATION,
+                reason
+        );
+        StockReservationEntity saved = stockReservationRepository.save(reservation);
+
+        if (saved.getOrderId() != null) {
+            eventPublisher.publishStockReservationFailed(saved.getOrderId(), reason);
+        }
+
+        return mapReservationToResponse(saved);
     }
 
     @Override
@@ -275,6 +337,62 @@ public class InventoryServiceImpl implements InventoryService {
         return stockReservationRepository.findByReservationNumber(normalizeReservation(reservationNumber))
                 .map(this::mapReservationToResponse)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation not found for number " + reservationNumber));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ReservationResponse getReservationByOrderId(Long orderId) {
+        return stockReservationRepository.findByOrderId(orderId)
+                .map(this::mapReservationToResponse)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Reservation not found for order id " + orderId));
+    }
+
+    @Override
+    public int expireDueReservations() {
+        List<String> dueReservationNumbers = stockReservationRepository.findDueReservationNumbers(
+                ReservationStatus.RESERVED,
+                LocalDateTime.now()
+        );
+
+        int expiredCount = 0;
+        for (String reservationNumber : dueReservationNumbers) {
+            ExpiredReservationResult result = transactionTemplate.execute(status -> {
+                StockReservationEntity reservation = stockReservationRepository
+                        .findByReservationNumberForUpdate(reservationNumber)
+                        .orElse(null);
+
+                if (reservation == null
+                        || reservation.getStatus() != ReservationStatus.RESERVED
+                        || !isDueForExpiry(reservation, LocalDateTime.now())) {
+                    return null;
+                }
+
+                String reason = "Reservation expired before order confirmation";
+                releaseReservedItems(
+                        reservation,
+                        ReservationStatus.EXPIRED,
+                        LedgerMovementType.EXPIRE_RESERVATION,
+                        reason
+                );
+                stockReservationRepository.save(reservation);
+                return new ExpiredReservationResult(reservation.getOrderId());
+            });
+
+            if (result == null) {
+                continue;
+            }
+
+            expiredCount++;
+            if (result.orderId() != null) {
+                eventPublisher.publishStockReservationFailed(
+                        result.orderId(),
+                        "Stock reservation expired before order confirmation"
+                );
+            }
+        }
+
+        return expiredCount;
     }
 
     @Override
@@ -318,16 +436,188 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
+    public void commitReservationForOrder(OrderConfirmedEvent event) {
+        if (event == null || event.getOrderId() == null) {
+            return;
+        }
+
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                StockReservationEntity reservation = stockReservationRepository
+                        .findByOrderIdForUpdate(event.getOrderId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Reservation not found for order " + event.getOrderId()));
+                commitReservationEntity(
+                        reservation,
+                        event.getOccurredAt() == null ? LocalDateTime.now() : event.getOccurredAt()
+                );
+            });
+        } catch (Exception ex) {
+            LOGGER.log(Level.SEVERE, "Failed to commit inventory reservation for confirmed order " + event.getOrderId(), ex);
+            eventPublisher.publishStockReservationFailed(
+                    event.getOrderId(),
+                    "Failed to commit confirmed inventory reservation: " + ex.getMessage()
+            );
+        }
+    }
+
+    @Override
     public void releaseReservationForOrder(OrderCancelledEvent event) {
+        if (event == null || event.getOrderId() == null) {
+            return;
+        }
+
         transactionTemplate.executeWithoutResult(status -> {
-            StockReservationEntity reservation = stockReservationRepository.findByOrderId(event.getOrderId()).orElse(null);
-            if (reservation == null || reservation.getStatus() != ReservationStatus.RESERVED) {
+            StockReservationEntity reservation = stockReservationRepository
+                    .findByOrderIdForUpdate(event.getOrderId())
+                    .orElse(null);
+            if (reservation == null
+                    || reservation.getStatus() == ReservationStatus.RELEASED
+                    || reservation.getStatus() == ReservationStatus.EXPIRED
+                    || reservation.getStatus() == ReservationStatus.FAILED) {
                 return;
             }
 
-            releaseReservation(reservation.getReservationNumber(),
-                    blankToNull(event.getReason()) == null ? "Order cancelled" : event.getReason());
+            String reason = blankToNull(event.getReason()) == null
+                    ? "Order cancelled"
+                    : event.getReason().trim();
+
+            if (reservation.getStatus() == ReservationStatus.RESERVED) {
+                releaseReservedItems(
+                        reservation,
+                        ReservationStatus.RELEASED,
+                        LedgerMovementType.RELEASE_RESERVATION,
+                        reason
+                );
+            } else if (reservation.getStatus() == ReservationStatus.COMMITTED) {
+                restockCommittedItems(reservation, reason);
+                reservation.setStatus(ReservationStatus.RELEASED);
+                reservation.setReleasedAt(LocalDateTime.now());
+                reservation.setReleaseReason(reason);
+                reservation.setExpiresAt(null);
+            }
+
+            stockReservationRepository.save(reservation);
         });
+    }
+
+    private StockReservationEntity commitReservationEntity(StockReservationEntity reservation,
+                                                             LocalDateTime confirmationTime) {
+        if (reservation.getStatus() == ReservationStatus.COMMITTED) {
+            return reservation;
+        }
+
+        if (reservation.getStatus() != ReservationStatus.RESERVED) {
+            throw new BadRequestException("Reservation " + reservation.getReservationNumber()
+                    + " cannot be committed from status " + reservation.getStatus());
+        }
+
+        LocalDateTime effectiveConfirmationTime = confirmationTime == null
+                ? LocalDateTime.now()
+                : confirmationTime;
+        if (reservation.getExpiresAt() != null
+                && effectiveConfirmationTime.isAfter(reservation.getExpiresAt())) {
+            throw new BadRequestException("Reservation " + reservation.getReservationNumber()
+                    + " expired before it could be committed");
+        }
+
+        for (StockReservationItemEntity item : reservation.getItems()) {
+            StockBalanceEntity stock = stockBalanceRepository
+                    .findByIdForUpdate(item.getStockBalance().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Stock not found for id " + item.getStockBalance().getId()));
+
+            int quantity = item.getQuantity();
+            if (stock.getReservedQuantity() < quantity) {
+                throw new BadRequestException("Reserved quantity is insufficient for product "
+                        + stock.getProductId());
+            }
+            if (stock.getTotalQuantity() < quantity) {
+                throw new BadRequestException("Total quantity is insufficient for product "
+                        + stock.getProductId());
+            }
+
+            stock.setTotalQuantity(stock.getTotalQuantity() - quantity);
+            stock.setReservedQuantity(stock.getReservedQuantity() - quantity);
+            StockBalanceEntity savedStock = stockBalanceRepository.save(stock);
+
+            addLedger(
+                    savedStock,
+                    LedgerMovementType.COMMIT_RESERVATION,
+                    -quantity,
+                    "ORDER",
+                    reservation.getOrderId() == null ? null : reservation.getOrderId().toString(),
+                    "Reserved stock committed after order confirmation"
+            );
+        }
+
+        reservation.setStatus(ReservationStatus.COMMITTED);
+        reservation.setCommittedAt(effectiveConfirmationTime);
+        reservation.setExpiresAt(null);
+        reservation.setFailureReason(null);
+        return stockReservationRepository.save(reservation);
+    }
+
+    private void releaseReservedItems(StockReservationEntity reservation,
+                                      ReservationStatus finalStatus,
+                                      LedgerMovementType movementType,
+                                      String reason) {
+        for (StockReservationItemEntity item : reservation.getItems()) {
+            StockBalanceEntity stock = stockBalanceRepository
+                    .findByIdForUpdate(item.getStockBalance().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Stock not found for id " + item.getStockBalance().getId()));
+
+            int newReservedQuantity = stock.getReservedQuantity() - item.getQuantity();
+            if (newReservedQuantity < 0) {
+                throw new BadRequestException("Reserved quantity cannot become negative for product "
+                        + stock.getProductId());
+            }
+
+            stock.setReservedQuantity(newReservedQuantity);
+            StockBalanceEntity savedStock = stockBalanceRepository.save(stock);
+
+            addLedger(
+                    savedStock,
+                    movementType,
+                    item.getQuantity(),
+                    "RESERVATION",
+                    reservation.getReservationNumber(),
+                    reason
+            );
+        }
+
+        reservation.setStatus(finalStatus);
+        reservation.setReleasedAt(LocalDateTime.now());
+        reservation.setReleaseReason(reason);
+        if (finalStatus == ReservationStatus.RELEASED) {
+            reservation.setExpiresAt(null);
+        }
+    }
+
+    private void restockCommittedItems(StockReservationEntity reservation, String reason) {
+        for (StockReservationItemEntity item : reservation.getItems()) {
+            StockBalanceEntity stock = stockBalanceRepository
+                    .findByIdForUpdate(item.getStockBalance().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Stock not found for id " + item.getStockBalance().getId()));
+
+            stock.setTotalQuantity(stock.getTotalQuantity() + item.getQuantity());
+            StockBalanceEntity savedStock = stockBalanceRepository.save(stock);
+
+            addLedger(
+                    savedStock,
+                    LedgerMovementType.RESTOCK_CANCELLED_ORDER,
+                    item.getQuantity(),
+                    "ORDER",
+                    reservation.getOrderId() == null ? null : reservation.getOrderId().toString(),
+                    reason
+            );
+        }
+    }
+
+    private boolean isDueForExpiry(StockReservationEntity reservation, LocalDateTime now) {
+        return reservation.getExpiresAt() != null && !reservation.getExpiresAt().isAfter(now);
     }
 
     protected void markOrderReservationFailed(OrderCreatedEvent event, String failureReason) {
@@ -437,7 +727,9 @@ public class InventoryServiceImpl implements InventoryService {
                 reservation.getItems().stream().map(this::mapReservationItemToResponse).toList(),
                 reservation.getCreatedAt(),
                 reservation.getUpdatedAt(),
-                reservation.getReleasedAt()
+                reservation.getReleasedAt(),
+                reservation.getExpiresAt(),
+                reservation.getCommittedAt()
         );
     }
 

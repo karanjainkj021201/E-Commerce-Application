@@ -71,6 +71,11 @@ public class AdminInventoryController {
         return ResponseEntity.ok(inventoryService.getReservations(page, size));
     }
 
+    @GetMapping("/reservations/order/{orderId}")
+    public ResponseEntity<ReservationResponse> getReservationByOrderId(@PathVariable Long orderId) {
+        return ResponseEntity.ok(inventoryService.getReservationByOrderId(orderId));
+    }
+
     @GetMapping("/reservations/{reservationNumber}")
     public ResponseEntity<ReservationResponse> getReservation(@PathVariable String reservationNumber) {
         return ResponseEntity.ok(inventoryService.getReservation(reservationNumber));

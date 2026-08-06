@@ -18,11 +18,23 @@ public class ReservationResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime releasedAt;
+    private LocalDateTime expiresAt;
+    private LocalDateTime committedAt;
 
-    public ReservationResponse(Long id, String reservationNumber, Long orderId, String orderNumber, String warehouseCode,
-                               ReservationStatus status, String failureReason, String releaseReason,
-                               List<ReservationItemResponse> items, LocalDateTime createdAt,
-                               LocalDateTime updatedAt, LocalDateTime releasedAt) {
+    public ReservationResponse(Long id,
+                               String reservationNumber,
+                               Long orderId,
+                               String orderNumber,
+                               String warehouseCode,
+                               ReservationStatus status,
+                               String failureReason,
+                               String releaseReason,
+                               List<ReservationItemResponse> items,
+                               LocalDateTime createdAt,
+                               LocalDateTime updatedAt,
+                               LocalDateTime releasedAt,
+                               LocalDateTime expiresAt,
+                               LocalDateTime committedAt) {
         this.id = id;
         this.reservationNumber = reservationNumber;
         this.orderId = orderId;
@@ -35,6 +47,8 @@ public class ReservationResponse {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.releasedAt = releasedAt;
+        this.expiresAt = expiresAt;
+        this.committedAt = committedAt;
     }
 
     public Long getId() { return id; }
@@ -49,4 +63,6 @@ public class ReservationResponse {
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public LocalDateTime getReleasedAt() { return releasedAt; }
+    public LocalDateTime getExpiresAt() { return expiresAt; }
+    public LocalDateTime getCommittedAt() { return committedAt; }
 }

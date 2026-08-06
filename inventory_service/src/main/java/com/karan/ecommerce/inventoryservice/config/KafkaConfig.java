@@ -13,21 +13,30 @@ public class KafkaConfig {
 
     @Bean
     public NewTopic orderCreatedTopic() {
-        return TopicBuilder.name(KafkaTopics.ORDER_CREATED).partitions(1).replicas(1).build();
+        return topic(KafkaTopics.ORDER_CREATED);
+    }
+
+    @Bean
+    public NewTopic orderConfirmedTopic() {
+        return topic(KafkaTopics.ORDER_CONFIRMED);
     }
 
     @Bean
     public NewTopic orderCancelledTopic() {
-        return TopicBuilder.name(KafkaTopics.ORDER_CANCELLED).partitions(1).replicas(1).build();
+        return topic(KafkaTopics.ORDER_CANCELLED);
     }
 
     @Bean
     public NewTopic stockReservedTopic() {
-        return TopicBuilder.name(KafkaTopics.STOCK_RESERVED).partitions(1).replicas(1).build();
+        return topic(KafkaTopics.STOCK_RESERVED);
     }
 
     @Bean
     public NewTopic stockReservationFailedTopic() {
-        return TopicBuilder.name(KafkaTopics.STOCK_RESERVATION_FAILED).partitions(1).replicas(1).build();
+        return topic(KafkaTopics.STOCK_RESERVATION_FAILED);
+    }
+
+    private NewTopic topic(String name) {
+        return TopicBuilder.name(name).partitions(1).replicas(1).build();
     }
 }

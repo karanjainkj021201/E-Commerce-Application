@@ -20,7 +20,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
@@ -34,3 +34,9 @@ spring:
 
   kafka:
     bootstrap-servers: kafka:9092
+
+inventory:
+  default-warehouse: ${DEFAULT_WAREHOUSE_CODE:WH-DEFAULT}
+  reservation-hold-minutes: ${RESERVATION_HOLD_MINUTES:10}
+  reservation-expiry-scan-ms: ${RESERVATION_EXPIRY_SCAN_MS:60000}
+  reservation-expiry-initial-delay-ms: ${RESERVATION_EXPIRY_INITIAL_DELAY_MS:60000}

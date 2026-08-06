@@ -1,0 +1,1080 @@
+{
+  "info": {
+    "_postman_id": "f5ccad08-d846-4df9-9f42-shipping-service",
+    "name": "Shipping Service - Standalone and Integrated E2E",
+    "description": "Tests Shipping Service on port 8086. Folder 1 tests the service independently using a local simulation endpoint. Folder 2 validates the real Kafka chain: OrderConfirmed -> ShipmentCreated -> ShipmentDelivered -> Order DELIVERED.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Authentication",
+      "item": [
+        {
+          "name": "Get Admin Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{keycloakBaseUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakBaseUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{adminUsername}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{adminPassword}}",
+                  "type": "text"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Admin token returned', function () { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('admin_token', data.access_token);",
+                  "const part = data.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "const payload = JSON.parse(atob(part.padEnd(part.length + (4 - part.length % 4) % 4, '=')));",
+                  "pm.collectionVariables.set('adminSub', payload.sub);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get User Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{keycloakBaseUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakBaseUrl}}"
+              ],
+              "path": [
+                "realms",
+                "{{realm}}",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "{{clientId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "username",
+                  "value": "{{userUsername}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{userPassword}}",
+                  "type": "text"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('User token returned', function () { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('user_token', data.access_token);",
+                  "const part = data.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "const payload = JSON.parse(atob(part.padEnd(part.length + (4 - part.length % 4) % 4, '=')));",
+                  "pm.collectionVariables.set('userSub', payload.sub);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Standalone Shipping Service E2E",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipping service is UP', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('UP'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Simulate OrderConfirmed (Standalone)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/test/order-confirmed",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{standaloneOrderId}},\n  \"orderNumber\": \"ORD-STANDALONE-{{standaloneOrderId}}\",\n  \"keycloakUserId\": \"{{userSub}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Local-only helper endpoint. Keep SHIPPING_LOCAL_MODE=true. For isolated testing, start the service with SHIPPING_EVENTS_ENABLED=false and SPRING_KAFKA_LISTENER_AUTO_STARTUP=false."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('standaloneOrderId')) { pm.collectionVariables.set('standaloneOrderId', Math.floor(Date.now()/1000)); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipment created', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.status).to.eql('CREATED');",
+                  "pm.collectionVariables.set('shipmentId', data.id);",
+                  "pm.collectionVariables.set('shipmentNumber', data.shipmentNumber);",
+                  "pm.collectionVariables.set('trackingNumber', data.trackingNumber);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Repeat Same OrderConfirmed (Idempotency)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/test/order-confirmed",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{standaloneOrderId}},\n  \"orderNumber\": \"ORD-STANDALONE-{{standaloneOrderId}}\",\n  \"keycloakUserId\": \"{{userSub}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Duplicate event does not create a second shipment', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const data = pm.response.json();",
+                  "pm.expect(String(data.id)).to.eql(String(pm.collectionVariables.get('shipmentId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin - Get Shipment By Order ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/admin/shipments/order/{{standaloneOrderId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipment fetched by order', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().orderId).to.eql(Number(pm.collectionVariables.get('standaloneOrderId'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin - Update Carrier and Tracking",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{shipmentId}}/details",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carrier\": \"BlueDart Test\",\n  \"trackingNumber\": \"{{manualTrackingNumber}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('manualTrackingNumber', 'BD-' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Details updated', function () { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.carrier).to.eql('BlueDart Test'); pm.collectionVariables.set('trackingNumber', d.trackingNumber); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin - Mark IN_TRANSIT",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{shipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_TRANSIT\",\n  \"note\": \"Parcel handed to carrier\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipment in transit', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('IN_TRANSIT'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin - Mark OUT_FOR_DELIVERY",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{shipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OUT_FOR_DELIVERY\",\n  \"note\": \"Out for delivery\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipment out for delivery', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('OUT_FOR_DELIVERY'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Public - Track Shipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/shipments/track/{{trackingNumber}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Public tracking works', function () { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.trackingNumber).to.eql(pm.collectionVariables.get('trackingNumber')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "User - Get My Shipments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/shipments/me?page=0&size=20",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{user_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('User shipment list returned', function () { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.content.some(x => String(x.id) === String(pm.collectionVariables.get('shipmentId')))).to.be.true; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "User - Get My Shipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/shipments/me/{{shipmentId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{user_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('User can access own shipment', function () { pm.response.to.have.status(200); pm.expect(String(pm.response.json().id)).to.eql(String(pm.collectionVariables.get('shipmentId'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin - Mark DELIVERED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{shipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DELIVERED\",\n  \"note\": \"Delivered to customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipment delivered', function () { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.status).to.eql('DELIVERED'); pm.expect(d.deliveredAt).to.not.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Delivered Tracking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/shipments/track/{{trackingNumber}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tracking shows delivered', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('DELIVERED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Negative - USER Cannot Access Admin API",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/admin/shipments",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{user_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('USER is forbidden', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Negative - Invalid Transition After Delivery",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{shipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_TRANSIT\",\n  \"note\": \"This must fail\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Invalid transition rejected', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Full Platform Kafka E2E",
+      "item": [
+        {
+          "name": "1. Create Order (Use ADMIN Token for Current Backend)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderBaseUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productId\": {{productId}},\n      \"quantity\": {{quantity}}\n    }\n  ],\n  \"shippingAddress\": {\n    \"customerName\": \"Karan Test\",\n    \"customerEmail\": \"karan.test@example.com\",\n    \"customerPhone\": \"9999999999\",\n    \"line1\": \"Test Address Line 1\",\n    \"line2\": \"Near Test Landmark\",\n    \"city\": \"Ludhiana\",\n    \"state\": \"Punjab\",\n    \"pincode\": \"141001\",\n    \"country\": \"India\"\n  },\n  \"paymentMethod\": \"GOOGLE_PAY\",\n  \"shippingFee\": 50.00\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Assumes productId exists and has stock. This uses the ADMIN token because the current Order -> Product internal snapshot call may reject a normal USER token until service-to-service authentication is fixed."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Order created', function () { pm.response.to.have.status(201); });",
+                  "const d=pm.response.json(); pm.collectionVariables.set('integratedOrderId', d.id); pm.collectionVariables.set('integratedOrderNumber', d.orderNumber);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Get Payment By Order ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{paymentBaseUrl}}/admin/payments/order/{{integratedOrderId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Kafka processing is asynchronous. Wait 2-5 seconds after creating the order if this initially returns 404."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Payment record exists', function () { pm.response.to.have.status(200); });",
+                  "const d=pm.response.json(); pm.collectionVariables.set('integratedPaymentReference', d.paymentReference);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Mark Payment Success",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{paymentBaseUrl}}/admin/payments/{{integratedPaymentReference}}/mock-success",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"gatewayReference\": \"GATEWAY-{{$timestamp}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Payment marked successful', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('SUCCEEDED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Verify Order Reaches SHIPMENT_CREATED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{orderBaseUrl}}/admin/orders/{{integratedOrderId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Wait 3-8 seconds after payment success. Inventory must reserve stock, Order Service must publish OrderConfirmed, and Shipping Service must publish ShipmentCreated. A second run should show SHIPMENT_CREATED."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Order received shipping event', function () { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(['CONFIRMED','SHIPMENT_CREATED']).to.include(d.status); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Get Automatically Created Shipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{shippingBaseUrl}}/admin/shipments/order/{{integratedOrderId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Shipping service consumed OrderConfirmed', function () { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.status).to.eql('CREATED'); pm.collectionVariables.set('integratedShipmentId', d.id); pm.collectionVariables.set('integratedTrackingNumber', d.trackingNumber); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Mark Integrated Shipment IN_TRANSIT",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{integratedShipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_TRANSIT\",\n  \"note\": \"Integrated test: handed to carrier\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Integrated shipment in transit', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('IN_TRANSIT'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Mark Integrated Shipment OUT_FOR_DELIVERY",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{integratedShipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OUT_FOR_DELIVERY\",\n  \"note\": \"Integrated test: out for delivery\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Integrated shipment out for delivery', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('OUT_FOR_DELIVERY'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Mark Integrated Shipment DELIVERED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{shippingBaseUrl}}/admin/shipments/{{integratedShipmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DELIVERED\",\n  \"note\": \"Integrated test: delivered successfully\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('ShipmentDelivered event published', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('DELIVERED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Verify Order Becomes DELIVERED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{orderBaseUrl}}/admin/orders/{{integratedOrderId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Wait 2-5 seconds after marking the shipment delivered because Kafka processing is asynchronous."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Order consumed ShipmentDelivered', function () { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('DELIVERED'); pm.expect(pm.response.json().shippingStatus).to.eql('DELIVERED'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "keycloakBaseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "realm",
+      "value": "ecommerce"
+    },
+    {
+      "key": "clientId",
+      "value": "postman-client"
+    },
+    {
+      "key": "adminUsername",
+      "value": "karanadmin"
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
+      "key": "userUsername",
+      "value": ""
+    },
+    {
+      "key": "userPassword",
+      "value": ""
+    },
+    {
+      "key": "shippingBaseUrl",
+      "value": "http://localhost:8086"
+    },
+    {
+      "key": "orderBaseUrl",
+      "value": "http://localhost:8083"
+    },
+    {
+      "key": "paymentBaseUrl",
+      "value": "http://localhost:8085"
+    },
+    {
+      "key": "productId",
+      "value": "1"
+    },
+    {
+      "key": "quantity",
+      "value": "1"
+    },
+    {
+      "key": "standaloneOrderId",
+      "value": ""
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "user_token",
+      "value": ""
+    },
+    {
+      "key": "userSub",
+      "value": ""
+    },
+    {
+      "key": "shipmentId",
+      "value": ""
+    },
+    {
+      "key": "trackingNumber",
+      "value": ""
+    },
+    {
+      "key": "integratedOrderId",
+      "value": ""
+    },
+    {
+      "key": "integratedPaymentReference",
+      "value": ""
+    },
+    {
+      "key": "integratedShipmentId",
+      "value": ""
+    }
+  ]
+}

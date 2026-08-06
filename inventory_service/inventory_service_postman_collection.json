@@ -1,566 +1,1009 @@
 {
   "info": {
-    "name": "Inventory Service Local Testing",
+    "name": "Inventory Service - Reservation Lifecycle",
+    "description": "Tests stock reservation, commit, release, automatic expiry, ledger, and real OrderConfirmed integration.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
-      "key": "baseUrl",
+      "key": "inventory_base",
       "value": "http://localhost:8084"
     },
     {
-      "key": "token",
-      "value": "PASTE_KEYCLOAK_TOKEN_HERE"
+      "key": "admin_token",
+      "value": "PASTE_CURRENT_ADMIN_TOKEN"
     },
     {
-      "key": "stockId",
-      "value": "1"
+      "key": "product_id",
+      "value": "3"
     },
     {
-      "key": "reservationNumber",
-      "value": "RES-CHANGE-ME"
+      "key": "stock_id",
+      "value": "3"
+    },
+    {
+      "key": "sku",
+      "value": "RS. 1"
+    },
+    {
+      "key": "manual_order_id",
+      "value": "91001"
+    },
+    {
+      "key": "expiry_order_id",
+      "value": "92001"
+    },
+    {
+      "key": "reservation_number",
+      "value": ""
+    },
+    {
+      "key": "expiry_reservation_number",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": "11"
     }
   ],
   "item": [
     {
-      "name": "Health Check",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/actuator/health",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "actuator",
-            "health"
-          ]
-        }
-      }
-    },
-    {
-      "name": "Create Opening Stock",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+      "name": "01 - Health and Stock",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/actuator/health",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health is UP', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
             }
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"productId\": 1,\n  \"sku\": \"IPHONE15-128-BLK\",\n  \"productName\": \"iPhone 15 128GB Black\",\n  \"warehouseCode\": \"WH-DEFAULT\",\n  \"quantity\": 100,\n  \"reason\": \"Opening stock\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Get All Stocks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/stocks?page=0&size=20",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "stocks?page=0&size=20"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
             }
-          }
-        }
-      }
-    },
-    {
-      "name": "Get All Stocks",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks?page=0&size=20",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks?page=0&size=20"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
             }
           ]
-        }
-      }
-    },
-    {
-      "name": "Get Stock By ID",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks/{{stockId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks",
-            "{{stockId}}"
-          ]
         },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+        {
+          "name": "Get Stock by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/stocks/{{stock_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "stocks",
+                "{{stock_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
             }
           ]
-        }
-      }
-    },
-    {
-      "name": "Get Stocks By Product",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks/product/1",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks",
-            "product",
-            "1"
-          ]
         },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+        {
+          "name": "Get Stock by Product",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/stocks/product/{{product_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "stocks",
+                "product",
+                "{{product_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
             }
           ]
-        }
-      }
-    },
-    {
-      "name": "Public Availability",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/inventory/products/1/availability?warehouseCode=WH-DEFAULT",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "inventory",
-            "products",
-            "1",
-            "availability?warehouseCode=WH-DEFAULT"
-          ]
-        }
-      }
-    },
-    {
-      "name": "Increase Stock",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks/{{stockId}}/increase",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks",
-            "{{stockId}}",
-            "increase"
-          ]
         },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+        {
+          "name": "Public Availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/inventory/products/{{product_id}}/availability?warehouseCode=WH-DEFAULT",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "inventory",
+                "products",
+                "{{product_id}}",
+                "availability?warehouseCode=WH-DEFAULT"
+              ]
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
             }
           ]
-        },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"quantity\": 20,\n  \"reason\": \"New inward stock received\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
         }
-      }
+      ]
     },
     {
-      "name": "Decrease Stock",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks/{{stockId}}/decrease",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks",
-            "{{stockId}}",
-            "decrease"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+      "name": "02 - Reserve, Commit, and Restock",
+      "item": [
+        {
+          "name": "Create Temporary Reservation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{manual_order_id}},\n  \"orderNumber\": \"ORD-MANUAL-{{manual_order_id}}\",\n  \"warehouseCode\": \"WH-DEFAULT\",\n  \"items\": [\n    {\n      \"productId\": {{product_id}},\n      \"sku\": \"{{sku}}\",\n      \"quantity\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = Date.now();",
+                  "pm.collectionVariables.set('manual_order_id', id.toString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reservation created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('RESERVED');",
+                  "  pm.expect(body.expiresAt).to.not.be.null;",
+                  "  pm.collectionVariables.set('reservation_number', body.reservationNumber);",
+                  "});"
+                ]
+              }
             }
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"quantity\": 5,\n  \"reason\": \"Damaged stock removed\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Get Reservation by Order ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/reservations/order/{{manual_order_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "reservations",
+                "order",
+                "{{manual_order_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reservation is RESERVED', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('RESERVED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Reservation by Number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/reservations/{{reservation_number}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "reservations",
+                "{{reservation_number}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Commit Reservation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations/{{reservation_number}}/commit",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations",
+                "{{reservation_number}}",
+                "commit"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reservation committed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('COMMITTED');",
+                  "  pm.expect(body.committedAt).to.not.be.null;",
+                  "  pm.expect(body.expiresAt).to.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Stock after Commit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/stocks/{{stock_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "stocks",
+                "{{stock_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Release Committed Reservation (Restock)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations/{{reservation_number}}/release",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations",
+                "{{reservation_number}}",
+                "release"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman cancellation after commit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Committed stock restored', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('RELEASED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Stock after Restock",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/stocks/{{stock_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "stocks",
+                "{{stock_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         }
-      }
+      ]
     },
     {
-      "name": "Adjust Stock",
-      "request": {
-        "method": "PATCH",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/stocks/{{stockId}}/adjust",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "stocks",
-            "{{stockId}}",
-            "adjust"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+      "name": "03 - Expiry (use 1-minute test configuration)",
+      "description": "Create the reservation, wait past expiresAt, then run the due-expiry scan.",
+      "item": [
+        {
+          "name": "Create Reservation for Expiry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{expiry_order_id}},\n  \"orderNumber\": \"ORD-EXPIRY-{{expiry_order_id}}\",\n  \"warehouseCode\": \"WH-DEFAULT\",\n  \"items\": [\n    {\n      \"productId\": {{product_id}},\n      \"sku\": \"{{sku}}\",\n      \"quantity\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = Date.now() + 1;",
+                  "pm.collectionVariables.set('expiry_order_id', id.toString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expiry reservation created', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('RESERVED');",
+                  "  pm.collectionVariables.set('expiry_reservation_number', body.reservationNumber);",
+                  "});"
+                ]
+              }
             }
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"quantity\": 120,\n  \"reason\": \"Physical stock reconciliation\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Direct Expire Before Due - Negative Test",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations/{{expiry_reservation_number}}/expire",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations",
+                "{{expiry_reservation_number}}",
+                "expire"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Early expiry is rejected', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Run Due Expiry Scan",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations/expire-due",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations",
+                "expire-due"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expiry scan completed', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.have.property('expiredCount');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Expiry Reservation by Order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/reservations/order/{{expiry_order_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "reservations",
+                "order",
+                "{{expiry_order_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reservation is visible', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(['RESERVED','EXPIRED']).to.include(pm.response.json().status);",
+                  "});"
+                ]
+              }
+            }
+          ]
         }
-      }
+      ]
     },
     {
-      "name": "Manual Reserve Inventory",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/internal/inventory/reservations",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "internal",
-            "inventory",
-            "reservations"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+      "name": "04 - Observability and Real Order",
+      "item": [
+        {
+          "name": "Get All Reservations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/reservations?page=0&size=50",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "reservations?page=0&size=50"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
             }
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"orderId\": 1001,\n  \"orderNumber\": \"ORD-TEST-1001\",\n  \"warehouseCode\": \"WH-DEFAULT\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"sku\": \"IPHONE15-128-BLK\",\n      \"quantity\": 2\n    }\n  ]\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "Get Ledger by Product",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/ledger/product/{{product_id}}?page=0&size=50",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "ledger",
+                "product",
+                "{{product_id}}?page=0&size=50"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Complete Ledger",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/ledger?page=0&size=50",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "ledger?page=0&size=50"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Reservation for Real Order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inventory_base}}/admin/inventory/reservations/order/{{order_id}}",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "admin",
+                "inventory",
+                "reservations",
+                "order",
+                "{{order_id}}"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
         }
-      }
+      ]
     },
     {
-      "name": "Get Reservation",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/reservations/{{reservationNumber}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "reservations",
-            "{{reservationNumber}}"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+      "name": "05 - Negative Tests",
+      "item": [
+        {
+          "name": "Insufficient Stock",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{inventory_base}}/internal/inventory/reservations",
+              "host": [
+                "{{inventory_base}}"
+              ],
+              "path": [
+                "internal",
+                "inventory",
+                "reservations"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{admin_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": 99999999,\n  \"orderNumber\": \"ORD-INSUFFICIENT-STOCK\",\n  \"warehouseCode\": \"WH-DEFAULT\",\n  \"items\": [\n    {\n      \"productId\": {{product_id}},\n      \"sku\": \"{{sku}}\",\n      \"quantity\": 999999\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Insufficient stock rejected', function () {",
+                  "  pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
             }
           ]
         }
-      }
-    },
-    {
-      "name": "Get Reservations",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/reservations?page=0&size=20",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "reservations?page=0&size=20"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
-            {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "name": "Get Ledger",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/ledger?page=0&size=20",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "ledger?page=0&size=20"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
-            {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "name": "Get Ledger By Product",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/admin/inventory/ledger/product/1?page=0&size=20",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "admin",
-            "inventory",
-            "ledger",
-            "product",
-            "1?page=0&size=20"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
-            {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "name": "Release Reservation",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/internal/inventory/reservations/{{reservationNumber}}/release",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "internal",
-            "inventory",
-            "reservations",
-            "{{reservationNumber}}",
-            "release"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
-            {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
-            }
-          ]
-        },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"reason\": \"Customer cancelled order\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        }
-      }
-    },
-    {
-      "name": "Insufficient Stock Negative Test",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/internal/inventory/reservations",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "internal",
-            "inventory",
-            "reservations"
-          ]
-        },
-        "auth": {
-          "type": "bearer",
-          "bearer": [
-            {
-              "key": "token",
-              "value": "{{token}}",
-              "type": "string"
-            }
-          ]
-        },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"orderId\": 1002,\n  \"orderNumber\": \"ORD-TEST-1002\",\n  \"warehouseCode\": \"WH-DEFAULT\",\n  \"items\": [\n    {\n      \"productId\": 1,\n      \"sku\": \"IPHONE15-128-BLK\",\n      \"quantity\": 9999\n    }\n  ]\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        }
-      }
+      ]
     }
   ]
 }

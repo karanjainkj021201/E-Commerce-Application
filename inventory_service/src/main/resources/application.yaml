@@ -50,6 +50,9 @@ server:
 
 inventory:
   default-warehouse: ${DEFAULT_WAREHOUSE_CODE:WH-DEFAULT}
+  reservation-hold-minutes: ${RESERVATION_HOLD_MINUTES:10}
+  reservation-expiry-scan-ms: ${RESERVATION_EXPIRY_SCAN_MS:60000}
+  reservation-expiry-initial-delay-ms: ${RESERVATION_EXPIRY_INITIAL_DELAY_MS:60000}
 
 management:
   endpoints:

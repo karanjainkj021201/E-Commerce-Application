@@ -3,6 +3,7 @@ package com.karan.ecommerce.inventoryservice.messaging;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.karan.ecommerce.inventoryservice.event.OrderCancelledEvent;
+import com.karan.ecommerce.inventoryservice.event.OrderConfirmedEvent;
 import com.karan.ecommerce.inventoryservice.event.OrderCreatedEvent;
 import com.karan.ecommerce.inventoryservice.service.InventoryService;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -23,6 +24,12 @@ public class InventoryEventListener {
     public void onOrderCreated(String payload) throws JsonProcessingException {
         OrderCreatedEvent event = objectMapper.readValue(payload, OrderCreatedEvent.class);
         inventoryService.reserveInventoryForOrder(event);
+    }
+
+    @KafkaListener(topics = KafkaTopics.ORDER_CONFIRMED, groupId = "inventory-service")
+    public void onOrderConfirmed(String payload) throws JsonProcessingException {
+        OrderConfirmedEvent event = objectMapper.readValue(payload, OrderConfirmedEvent.class);
+        inventoryService.commitReservationForOrder(event);
     }
 
     @KafkaListener(topics = KafkaTopics.ORDER_CANCELLED, groupId = "inventory-service")

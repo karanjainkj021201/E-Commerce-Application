@@ -49,6 +49,12 @@ public class StockReservationEntity {
     @Column(name = "released_at")
     private LocalDateTime releasedAt;
 
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
+
+    @Column(name = "committed_at")
+    private LocalDateTime committedAt;
+
     @PrePersist
     public void onCreate() {
         LocalDateTime now = LocalDateTime.now();
@@ -95,4 +101,8 @@ public class StockReservationEntity {
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public LocalDateTime getReleasedAt() { return releasedAt; }
     public void setReleasedAt(LocalDateTime releasedAt) { this.releasedAt = releasedAt; }
+    public LocalDateTime getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
+    public LocalDateTime getCommittedAt() { return committedAt; }
+    public void setCommittedAt(LocalDateTime committedAt) { this.committedAt = committedAt; }
 }

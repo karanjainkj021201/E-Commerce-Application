@@ -1,350 +1,405 @@
-# Inventory Service - Postman Testing Steps
+# Inventory Service – Reservation Lifecycle Testing
 
-Base URL: `http://localhost:8084`
+Base URL:
 
-Use your Keycloak access token in Postman:
-
-Authorization tab -> Type: Bearer Token -> Token: `<ADMIN_OR_SERVICE_TOKEN>`
-
-Public availability endpoint does not require token. Admin/internal endpoints require token.
-
----
-
-## 0. Health Check
-
-Method: `GET`
-
-URL: `http://localhost:8084/actuator/health`
-
-Expected: `200 OK`
-
----
-
-## 1. Create Opening Stock
-
-Method: `POST`
-
-URL: `http://localhost:8084/admin/inventory/stocks`
-
-Authorization: Bearer Admin token
-
-Body -> raw -> JSON:
-
-```json
-{
-  "productId": 1,
-  "sku": "IPHONE15-128-BLK",
-  "productName": "iPhone 15 128GB Black",
-  "warehouseCode": "WH-DEFAULT",
-  "quantity": 100,
-  "reason": "Opening stock"
-}
+```text
+http://localhost:8084
 ```
 
-Save `id` from response as `stockId`.
+Postman variables used:
 
----
-
-## 2. Get All Stocks
-
-Method: `GET`
-
-URL: `http://localhost:8084/admin/inventory/stocks?page=0&size=20`
-
-Authorization: Bearer Admin token
-
----
-
-## 3. Get Stock by Stock ID
-
-Method: `GET`
-
-URL: `http://localhost:8084/admin/inventory/stocks/{{stockId}}`
-
-Authorization: Bearer Admin token
-
----
-
-## 4. Get Stock by Product ID
-
-Method: `GET`
-
-URL: `http://localhost:8084/admin/inventory/stocks/product/1`
-
-Authorization: Bearer Admin token
-
----
-
-## 5. Public Product Availability
-
-Method: `GET`
-
-URL: `http://localhost:8084/inventory/products/1/availability?warehouseCode=WH-DEFAULT`
-
-Authorization: Not required
-
-Expected available quantity: `100`
-
----
-
-## 6. Increase Stock
-
-Method: `POST`
-
-URL: `http://localhost:8084/admin/inventory/stocks/{{stockId}}/increase`
-
-Authorization: Bearer Admin token
-
-Body:
-
-```json
-{
-  "quantity": 20,
-  "reason": "New inward stock received"
-}
+```text
+inventory_base = http://localhost:8084
+admin_token    = current Keycloak ADMIN token
+product_id     = 3
+stock_id       = 3
+sku            = RS. 1
+reservation_number
+manual_order_id
+expiry_order_id
 ```
 
-Expected total quantity becomes `120`.
+For protected endpoints use:
 
----
-
-## 7. Decrease Stock
-
-Method: `POST`
-
-URL: `http://localhost:8084/admin/inventory/stocks/{{stockId}}/decrease`
-
-Authorization: Bearer Admin token
-
-Body:
-
-```json
-{
-  "quantity": 5,
-  "reason": "Damaged stock removed"
-}
+```text
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
 ```
 
-Expected total quantity becomes `115`.
-
 ---
 
-## 8. Adjust Stock to Exact Quantity
+## A. Deploy the updated Inventory Service
 
-This sets total quantity to an exact value. It does not add/subtract.
+From `~/Desktop/E-Commerce-Application`:
 
-Method: `PATCH`
-
-URL: `http://localhost:8084/admin/inventory/stocks/{{stockId}}/adjust`
-
-Authorization: Bearer Admin token
-
-Body:
-
-```json
-{
-  "quantity": 120,
-  "reason": "Physical stock reconciliation"
-}
+```bash
+docker compose build --no-cache inventory-service
+docker compose up -d --force-recreate inventory-service
 ```
 
-Expected total quantity becomes exactly `120`.
+Verify startup and Kafka subscriptions:
+
+```bash
+docker logs inventory-service 2>&1 \
+  | grep -iE "Started InventoryServiceApplication|Subscribed to topic|partitions assigned|ERROR|Exception"
+```
+
+Expected subscriptions include:
+
+```text
+OrderCreated
+OrderConfirmed
+OrderCancelled
+```
+
+Health:
+
+```http
+GET {{inventory_base}}/actuator/health
+```
+
+Expected: `200 OK`, `status = UP`.
 
 ---
 
-## 9. Manual Reservation Test
+## B. Confirm current stock
 
-Method: `POST`
+```http
+GET {{inventory_base}}/admin/inventory/stocks/{{stock_id}}
+Authorization: Bearer {{admin_token}}
+```
 
-URL: `http://localhost:8084/internal/inventory/reservations`
+Or by product:
 
-Authorization: Bearer Admin or Service token
+```http
+GET {{inventory_base}}/admin/inventory/stocks/product/{{product_id}}
+Authorization: Bearer {{admin_token}}
+```
 
-Body:
+Record:
+
+```text
+totalQuantity
+reservedQuantity
+availableQuantity
+```
+
+---
+
+## C. Manual reservation test
+
+Use a new order ID that has never been used before.
+
+```http
+POST {{inventory_base}}/internal/inventory/reservations
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+```
 
 ```json
 {
-  "orderId": 1001,
-  "orderNumber": "ORD-TEST-1001",
+  "orderId": 91001,
+  "orderNumber": "ORD-MANUAL-91001",
   "warehouseCode": "WH-DEFAULT",
   "items": [
     {
-      "productId": 1,
-      "sku": "IPHONE15-128-BLK",
+      "productId": 3,
+      "sku": "RS. 1",
       "quantity": 2
     }
   ]
 }
 ```
 
-Save `reservationNumber` from response.
+Expected response:
 
-Expected: reserved quantity increases by `2`, available quantity reduces by `2`.
+```text
+status = RESERVED
+expiresAt = approximately 10 minutes after createdAt
+committedAt = null
+```
 
----
+Save `reservationNumber` as `{{reservation_number}}`.
 
-## 10. Get Reservation by Reservation Number
+Verify by order ID:
 
-Method: `GET`
+```http
+GET {{inventory_base}}/admin/inventory/reservations/order/91001
+Authorization: Bearer {{admin_token}}
+```
 
-URL: `http://localhost:8084/admin/inventory/reservations/{{reservationNumber}}`
+Verify stock:
 
-Authorization: Bearer Admin token
+```http
+GET {{inventory_base}}/admin/inventory/stocks/{{stock_id}}
+Authorization: Bearer {{admin_token}}
+```
 
----
+For a 2-unit reservation:
 
-## 11. Check Availability After Reservation
-
-Method: `GET`
-
-URL: `http://localhost:8084/inventory/products/1/availability?warehouseCode=WH-DEFAULT`
-
-Expected available quantity should be `118` if total is `120` and reserved is `2`.
-
----
-
-## 12. Get Inventory Ledger
-
-Method: `GET`
-
-URL: `http://localhost:8084/admin/inventory/ledger?page=0&size=20`
-
-Authorization: Bearer Admin token
-
-You should see movements like `STOCK_IN`, `STOCK_OUT`, `ADJUSTMENT`, and `RESERVE`.
+```text
+totalQuantity: unchanged
+reservedQuantity: +2
+availableQuantity: -2
+```
 
 ---
 
-## 13. Get Ledger by Product
+## D. Commit test – simulates OrderConfirmed
 
-Method: `GET`
+```http
+POST {{inventory_base}}/internal/inventory/reservations/{{reservation_number}}/commit
+Authorization: Bearer {{admin_token}}
+```
 
-URL: `http://localhost:8084/admin/inventory/ledger/product/1?page=0&size=20`
+Expected reservation:
 
-Authorization: Bearer Admin token
+```text
+status = COMMITTED
+committedAt != null
+expiresAt = null
+```
+
+Verify stock again:
+
+```http
+GET {{inventory_base}}/admin/inventory/stocks/{{stock_id}}
+Authorization: Bearer {{admin_token}}
+```
+
+For 2 units:
+
+```text
+totalQuantity: -2
+reservedQuantity: -2
+availableQuantity: unchanged from the reserved state
+```
+
+Example:
+
+```text
+Before reservation: total=100, reserved=0, available=100
+After reservation:  total=100, reserved=2, available=98
+After commit:       total=98,  reserved=0, available=98
+```
 
 ---
 
-## 14. Release Reservation
+## E. Cancellation after commit – restock test
 
-Method: `POST`
-
-URL: `http://localhost:8084/internal/inventory/reservations/{{reservationNumber}}/release`
-
-Authorization: Bearer Admin or Service token
-
-Body:
+```http
+POST {{inventory_base}}/internal/inventory/reservations/{{reservation_number}}/release
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+```
 
 ```json
 {
-  "reason": "Customer cancelled order"
+  "reason": "Test cancellation after payment confirmation"
 }
 ```
 
-Expected: reservation status becomes `RELEASED`, reserved quantity reduces by `2`, available quantity increases by `2`.
+Expected:
+
+```text
+status = RELEASED
+totalQuantity increases by 2
+reservedQuantity remains 0
+availableQuantity increases by 2
+```
 
 ---
 
-## 15. Insufficient Stock Negative Test
+## F. Automatic expiry test
 
-Method: `POST`
+The default hold is 10 minutes. For a fast test, temporarily set these under `inventory-service.environment` in `docker-compose.yml`:
 
-URL: `http://localhost:8084/internal/inventory/reservations`
+```yaml
+RESERVATION_HOLD_MINUTES: 1
+RESERVATION_EXPIRY_SCAN_MS: 5000
+RESERVATION_EXPIRY_INITIAL_DELAY_MS: 5000
+```
 
-Authorization: Bearer Admin or Service token
+Recreate only Inventory Service:
 
-Body:
+```bash
+docker compose up -d --build --force-recreate inventory-service
+```
+
+Create another reservation with a fresh order ID:
+
+```http
+POST {{inventory_base}}/internal/inventory/reservations
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+```
 
 ```json
 {
-  "orderId": 1002,
-  "orderNumber": "ORD-TEST-1002",
+  "orderId": 92001,
+  "orderNumber": "ORD-EXPIRY-92001",
   "warehouseCode": "WH-DEFAULT",
   "items": [
     {
-      "productId": 1,
-      "sku": "IPHONE15-128-BLK",
-      "quantity": 9999
+      "productId": 3,
+      "sku": "RS. 1",
+      "quantity": 2
     }
   ]
 }
 ```
 
-Expected: `400 Bad Request` with insufficient stock message.
+Save its `reservationNumber`. Wait slightly longer than one minute.
 
----
+The scheduler should expire it automatically. To trigger an immediate due-reservation scan after the wait:
 
-## 16. Multi-Product Reservation Test
+```http
+POST {{inventory_base}}/internal/inventory/reservations/expire-due
+Authorization: Bearer {{admin_token}}
+```
 
-First create another stock item:
-
-Method: `POST`
-
-URL: `http://localhost:8084/admin/inventory/stocks`
-
-Body:
+Expected:
 
 ```json
 {
-  "productId": 2,
-  "sku": "SAMSUNG-S24-256-GRY",
-  "productName": "Samsung S24 256GB Grey",
-  "warehouseCode": "WH-DEFAULT",
-  "quantity": 50,
-  "reason": "Opening stock"
+  "expiredCount": 1
 }
 ```
 
-Then reserve both products:
+Verify reservation:
 
-Method: `POST`
-
-URL: `http://localhost:8084/internal/inventory/reservations`
-
-Body:
-
-```json
-{
-  "orderId": 1003,
-  "orderNumber": "ORD-TEST-1003",
-  "warehouseCode": "WH-DEFAULT",
-  "items": [
-    {
-      "productId": 1,
-      "sku": "IPHONE15-128-BLK",
-      "quantity": 1
-    },
-    {
-      "productId": 2,
-      "sku": "SAMSUNG-S24-256-GRY",
-      "quantity": 3
-    }
-  ]
-}
+```http
+GET {{inventory_base}}/admin/inventory/reservations/order/92001
+Authorization: Bearer {{admin_token}}
 ```
 
-Expected: one reservation with two reservation items.
+Expected:
+
+```text
+status = EXPIRED
+releasedAt != null
+releaseReason = Reservation expired before order confirmation
+```
+
+Verify stock returned:
+
+```text
+totalQuantity: unchanged
+reservedQuantity: -2
+availableQuantity: +2
+```
+
+Calling the direct expiry endpoint before `expiresAt` should return `400 Bad Request`:
+
+```http
+POST {{inventory_base}}/internal/inventory/reservations/{reservationNumber}/expire
+Authorization: Bearer {{admin_token}}
+```
 
 ---
 
-## 17. End-to-End Order Service + Inventory Service Kafka Test
+## G. Release before payment test
 
-Prerequisites:
+Create another fresh reservation, then call:
 
-- Kafka running on `localhost:9092`
-- Product Service running on `8082`
-- Order Service running on `8083`
-- Inventory Service running on `8084`
-- Stock exists in Inventory Service for the same product IDs used in the order
+```http
+POST {{inventory_base}}/internal/inventory/reservations/{{reservation_number}}/release
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+```
 
-Flow:
+```json
+{
+  "reason": "Customer cancelled during checkout"
+}
+```
 
-1. Create stock in Inventory Service for the product ID you will order.
-2. Create order from Order Service using `POST http://localhost:8083/orders`.
-3. Order Service publishes `OrderCreated`.
-4. Inventory Service consumes `OrderCreated`, reserves stock, and publishes `StockReserved`.
-5. Order Service consumes `StockReserved` and updates inventory status to `RESERVED`.
-6. Check reservations using `GET http://localhost:8084/admin/inventory/reservations?page=0&size=20`.
-7. Check order using `GET http://localhost:8083/admin/orders/{orderId}`.
-8. If you cancel the order, Order Service publishes `OrderCancelled`; Inventory Service releases the stock reservation.
+Expected:
 
+```text
+RESERVED -> RELEASED
+reservedQuantity decreases
+availableQuantity increases
+totalQuantity does not change
+```
+
+---
+
+## H. Ledger verification
+
+```http
+GET {{inventory_base}}/admin/inventory/ledger/product/{{product_id}}?page=0&size=50
+Authorization: Bearer {{admin_token}}
+```
+
+New movement types:
+
+```text
+COMMIT_RESERVATION
+EXPIRE_RESERVATION
+RESTOCK_CANCELLED_ORDER
+```
+
+---
+
+## I. Real Kafka end-to-end test
+
+1. Ensure all services are running.
+2. Create a fresh order through Order Service.
+3. `OrderCreated` reserves stock.
+4. Complete payment.
+5. Order becomes `CONFIRMED` and publishes `OrderConfirmed`.
+6. Inventory consumes `OrderConfirmed` and changes the reservation to `COMMITTED`.
+7. Shipping later creates and delivers the shipment; delivery does not deduct stock again.
+
+Check reservation by the real order ID:
+
+```http
+GET {{inventory_base}}/admin/inventory/reservations/order/{{order_id}}
+Authorization: Bearer {{admin_token}}
+```
+
+Expected after confirmation:
+
+```text
+status = COMMITTED
+reservedQuantity no longer includes this order
+totalQuantity has been reduced by the ordered quantity
+```
+
+Check logs:
+
+```bash
+docker logs inventory-service --since 10m 2>&1 \
+  | grep -iE "OrderCreated|OrderConfirmed|OrderCancelled|Expired|StockReserved|StockReservationFailed|ERROR|Exception"
+```
+
+---
+
+## J. Cart rule verification
+
+Adding an item to the UI cart must not call Inventory Service and must not publish `OrderCreated`.
+
+Before checkout:
+
+```text
+totalQuantity: unchanged
+reservedQuantity: unchanged
+availableQuantity: unchanged
+```
+
+Only pressing Place Order / starting payment should create the order and start the 10-minute reservation.
+
+---
+
+## K. Restore normal timeout after fast testing
+
+Set:
+
+```yaml
+RESERVATION_HOLD_MINUTES: 10
+RESERVATION_EXPIRY_SCAN_MS: 60000
+RESERVATION_EXPIRY_INITIAL_DELAY_MS: 60000
+```
+
+Then recreate Inventory Service.
