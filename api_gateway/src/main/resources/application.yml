@@ -1,0 +1,96 @@
+server:
+  port: ${SERVER_PORT:8087}
+
+spring:
+  application:
+    name: api-gateway
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8080/realms/ecommerce}
+          jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8080/realms/ecommerce/protocol/openid-connect/certs}
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowed-origins:
+                  - ${UI_ORIGIN:http://localhost:4200}
+                  - http://127.0.0.1:4200
+                allowed-methods:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - OPTIONS
+                allowed-headers:
+                  - "*"
+                exposed-headers:
+                  - X-Correlation-Id
+                allow-credentials: true
+                max-age: 3600
+          routes:
+            - id: user-service
+              uri: ${USER_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - StripPrefix=1
+
+            - id: product-service
+              uri: ${PRODUCT_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/catalog/**,/api/admin/products/**,/api/admin/categories/**
+              filters:
+                - StripPrefix=1
+
+            - id: order-service
+              uri: ${ORDER_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/orders/**,/api/admin/orders/**
+              filters:
+                - StripPrefix=1
+
+            - id: inventory-service
+              uri: ${INVENTORY_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/inventory/**,/api/admin/inventory/**
+              filters:
+                - StripPrefix=1
+
+            - id: payment-service
+              uri: ${PAYMENT_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/payments/**,/api/admin/payments/**
+              filters:
+                - StripPrefix=1
+
+            - id: shipping-service
+              uri: ${SHIPPING_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/api/shipments/**,/api/admin/shipments/**
+              filters:
+                - StripPrefix=1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+  endpoint:
+    health:
+      show-details: always
+    gateway:
+      access: read-only
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: INFO

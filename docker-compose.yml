@@ -38,9 +38,46 @@ services:
 
     volumes:
       - kafka_data:/var/lib/kafka/data
-      
+
     networks:
       - ecommerce-network
+
+
+  api-gateway:
+    build: ./api_gateway
+    container_name: api-gateway
+
+    ports:
+      - "8087:8087"
+
+    environment:
+      SERVER_PORT: 8087
+
+      JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+
+      USER_SERVICE_URL: http://user-service:8080
+      PRODUCT_SERVICE_URL: http://product-service:8080
+      ORDER_SERVICE_URL: http://order-service:8080
+      INVENTORY_SERVICE_URL: http://inventory-service:8080
+      PAYMENT_SERVICE_URL: http://payment-service:8080
+      SHIPPING_SERVICE_URL: http://shipping-service:8080
+
+      UI_ORIGIN: http://localhost:4200
+
+    depends_on:
+      - keycloak
+      - user-service
+      - product-service
+      - order-service
+      - inventory-service
+      - payment-service
+      - shipping-service
+
+    networks:
+      - ecommerce-network
+
+    restart: unless-stopped
 
   user-service:
     build: ./user_service
