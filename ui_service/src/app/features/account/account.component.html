@@ -1,0 +1,99 @@
+<section class="page-shell page-top">
+  <div class="account-header">
+    <div>
+      <span class="eyebrow">Customer workspace</span>
+      <h1>Welcome back, {{ auth.username() }}</h1>
+      <p>One place for the complete order, payment, inventory, and delivery lifecycle.</p>
+    </div>
+    <button class="button ghost" type="button" (click)="refresh()">Refresh activity</button>
+  </div>
+
+  <div class="metric-grid">
+    <div class="metric-card"><small>Total orders</small><strong>{{ orders().length }}</strong><span>Across all statuses</span></div>
+    <div class="metric-card"><small>Pending payments</small><strong>{{ pendingPaymentCount() }}</strong><span>Awaiting confirmation</span></div>
+    <div class="metric-card"><small>Active shipments</small><strong>{{ activeShipmentCount() }}</strong><span>Moving through delivery</span></div>
+  </div>
+
+  <div class="tab-bar" role="tablist">
+    <button type="button" [class.active]="activeTab() === 'orders'" (click)="setTab('orders')">Orders</button>
+    <button type="button" [class.active]="activeTab() === 'payments'" (click)="setTab('payments')">Payments</button>
+    <button type="button" [class.active]="activeTab() === 'shipments'" (click)="setTab('shipments')">Shipments</button>
+    <button type="button" [class.active]="activeTab() === 'profile'" (click)="setTab('profile')">Profile</button>
+  </div>
+
+  @if (message()) { <div class="notice" role="status">{{ message() }}</div> }
+
+  @if (loading()) {
+    <div class="panel loading-panel">Loading your activity…</div>
+  } @else if (activeTab() === 'orders') {
+    <div class="stack-list">
+      @for (order of orders(); track order.id) {
+        <article class="order-card panel">
+          <div class="order-title">
+            <div><small>{{ order.createdAt | date:'medium' }}</small><h3>{{ order.orderNumber }}</h3></div>
+            <span class="status-pill" [attr.data-status]="order.status">{{ order.status }}</span>
+          </div>
+          <div class="status-rail">
+            <div><small>Inventory</small><strong>{{ order.inventoryStatus }}</strong></div>
+            <div><small>Payment</small><strong>{{ order.paymentStatus }}</strong></div>
+            <div><small>Shipping</small><strong>{{ order.shippingStatus }}</strong></div>
+          </div>
+          <div class="line-items">
+            @for (item of order.items; track item.id) {
+              <span>{{ item.productNameSnapshot }} × {{ item.quantity }}</span>
+            }
+          </div>
+          <div class="order-footer">
+            <strong>{{ order.totalAmount | currency:order.currency }}</strong>
+            @if (['CREATED', 'CONFIRMED'].includes(order.status)) {
+              <button class="text-button danger" type="button" (click)="cancel(order)">Cancel order</button>
+            }
+          </div>
+        </article>
+      } @empty {
+        <div class="empty-state"><span>◇</span><h3>No orders yet</h3><a class="button primary" routerLink="/">Start shopping</a></div>
+      }
+    </div>
+  } @else if (activeTab() === 'payments') {
+    <div class="data-grid">
+      @for (payment of payments(); track payment.id) {
+        <article class="panel data-card">
+          <div><span class="status-pill">{{ payment.status }}</span><small>{{ payment.createdAt | date:'medium' }}</small></div>
+          <h3>{{ payment.paymentReference }}</h3>
+          <p>Order {{ payment.orderNumber }}</p>
+          <strong>{{ payment.amount | currency:payment.currency }}</strong>
+          @if (['PENDING', 'REDIRECT_CREATED'].includes(payment.status)) {
+            <button class="button ghost compact" type="button" (click)="openPayment(payment)">Open Google Pay</button>
+          }
+        </article>
+      } @empty {
+        <div class="empty-state"><h3>No payment attempts yet</h3><p>Payment is created asynchronously after an order event.</p></div>
+      }
+    </div>
+  } @else if (activeTab() === 'shipments') {
+    <div class="data-grid">
+      @for (shipment of shipments(); track shipment.id) {
+        <article class="panel data-card">
+          <div><span class="status-pill">{{ shipment.status }}</span><small>{{ shipment.createdAt | date:'medium' }}</small></div>
+          <h3>{{ shipment.shipmentNumber }}</h3>
+          <p>{{ shipment.carrier || 'Carrier pending' }} · {{ shipment.trackingNumber || 'Tracking pending' }}</p>
+          @if (shipment.trackingNumber) {
+            <a class="button ghost compact" routerLink="/track" [queryParams]="{ number: shipment.trackingNumber }">Open tracking</a>
+          }
+        </article>
+      } @empty {
+        <div class="empty-state"><h3>No shipments yet</h3><p>A shipment is created after inventory and payment confirm the order.</p></div>
+      }
+    </div>
+  } @else {
+    <form #profile="ngForm" class="panel profile-form" (ngSubmit)="saveProfile(profile)">
+      <div><span class="eyebrow">User service profile</span><h2>{{ profileExists() ? 'Update your profile' : 'Create your profile' }}</h2></div>
+      <div class="form-grid">
+        <label class="wide">Full name<input name="name" [(ngModel)]="profileForm.name" required></label>
+        <label>Email<input name="email" [(ngModel)]="profileForm.email" type="email" required></label>
+        <label>Phone<input name="phone" [(ngModel)]="profileForm.phone" required></label>
+      </div>
+      <button class="button primary" type="submit" [disabled]="savingProfile()">{{ savingProfile() ? 'Saving…' : 'Save profile' }}</button>
+    </form>
+  }
+</section>

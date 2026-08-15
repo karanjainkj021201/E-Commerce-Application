@@ -1,0 +1,69 @@
+<section class="page-shell page-top narrow-shell">
+  @if (createdOrder(); as order) {
+    <div class="success-card">
+      <span class="success-icon">✓</span>
+      <span class="eyebrow">Order accepted</span>
+      <h1>{{ order.orderNumber }}</h1>
+      <p>Your order entered the event-driven workflow. Inventory and payment start as pending and update through Kafka events.</p>
+      <div class="status-grid">
+        <div><small>Order</small><strong>{{ order.status }}</strong></div>
+        <div><small>Inventory</small><strong>{{ order.inventoryStatus }}</strong></div>
+        <div><small>Payment</small><strong>{{ order.paymentStatus }}</strong></div>
+      </div>
+      <a class="button primary" routerLink="/account">View order timeline</a>
+    </div>
+  } @else if (cart.items().length === 0) {
+    <div class="empty-state">
+      <span>◌</span><h2>Your cart is empty</h2>
+      <a class="button primary" routerLink="/">Return to catalog</a>
+    </div>
+  } @else {
+    <div class="checkout-heading">
+      <span class="eyebrow">Secure checkout</span>
+      <h1>Where should we deliver?</h1>
+      <p>The customer identity comes from Keycloak. These details are saved as an immutable address snapshot on the order.</p>
+    </div>
+
+    @if (error()) { <div class="notice error" role="alert">{{ error() }}</div> }
+
+    <div class="checkout-layout">
+      <form #checkoutForm="ngForm" class="panel form-panel" (ngSubmit)="placeOrder(checkoutForm)">
+        <h2>Contact details</h2>
+        <div class="form-grid">
+          <label class="wide">Full name<input name="customerName" [(ngModel)]="address.customerName" required maxlength="120"></label>
+          <label>Email<input name="customerEmail" [(ngModel)]="address.customerEmail" type="email" required maxlength="180"></label>
+          <label>Phone<input name="customerPhone" [(ngModel)]="address.customerPhone" required maxlength="30"></label>
+        </div>
+
+        <h2>Shipping address</h2>
+        <div class="form-grid">
+          <label class="wide">Address line 1<input name="line1" [(ngModel)]="address.line1" required maxlength="250"></label>
+          <label class="wide">Address line 2 <small>(optional)</small><input name="line2" [(ngModel)]="address.line2" maxlength="250"></label>
+          <label>City<input name="city" [(ngModel)]="address.city" required maxlength="100"></label>
+          <label>State<input name="state" [(ngModel)]="address.state" required maxlength="100"></label>
+          <label>PIN code<input name="pincode" [(ngModel)]="address.pincode" required maxlength="20"></label>
+          <label>Country<input name="country" [(ngModel)]="address.country" required maxlength="80"></label>
+        </div>
+
+        <div class="payment-choice">
+          <span class="payment-logo">G</span>
+          <div><strong>Google Pay demo</strong><small>Payment is completed from the admin mock-payment action.</small></div>
+          <span>Selected</span>
+        </div>
+
+        <button class="button primary full" type="submit" [disabled]="submitting()">
+          {{ submitting() ? 'Placing order…' : 'Place order · ' + ((cart.subtotal() + 50) | currency:'INR') }}
+        </button>
+      </form>
+
+      <aside class="summary-card">
+        <span class="eyebrow">Review</span>
+        @for (item of cart.items(); track item.product.id) {
+          <div><span>{{ item.product.name }} × {{ item.quantity }}</span><strong>{{ item.product.price * item.quantity | currency:item.product.currency }}</strong></div>
+        }
+        <div><span>Shipping</span><strong>₹50.00</strong></div>
+        <div class="summary-total"><span>Total</span><strong>{{ cart.subtotal() + 50 | currency:'INR' }}</strong></div>
+      </aside>
+    </div>
+  }
+</section>

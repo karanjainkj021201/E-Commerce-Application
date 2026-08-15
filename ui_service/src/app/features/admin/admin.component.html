@@ -1,0 +1,179 @@
+<section class="admin-shell">
+  <aside class="admin-nav">
+    <div><span class="eyebrow light">Admin console</span><h2>Operations</h2><p>Drive every service from one workspace.</p></div>
+    <nav>
+      <button type="button" [class.active]="activeTab() === 'overview'" (click)="setTab('overview')"><span>⌂</span> Overview</button>
+      <button type="button" [class.active]="activeTab() === 'catalog'" (click)="setTab('catalog')"><span>◇</span> Catalog</button>
+      <button type="button" [class.active]="activeTab() === 'inventory'" (click)="setTab('inventory')"><span>▦</span> Inventory</button>
+      <button type="button" [class.active]="activeTab() === 'orders'" (click)="setTab('orders')"><span>▤</span> Orders</button>
+      <button type="button" [class.active]="activeTab() === 'payments'" (click)="setTab('payments')"><span>₹</span> Payments</button>
+      <button type="button" [class.active]="activeTab() === 'shipping'" (click)="setTab('shipping')"><span>↗</span> Shipping</button>
+      <button type="button" [class.active]="activeTab() === 'users'" (click)="setTab('users')"><span>◎</span> Users</button>
+    </nav>
+    <button class="button accent full" type="button" (click)="loadAll()">Refresh all services</button>
+  </aside>
+
+  <div class="admin-content">
+    <div class="admin-topbar">
+      <div><span class="eyebrow">Protected by ADMIN role</span><h1>{{ activeTab().charAt(0).toUpperCase() + activeTab().slice(1) }}</h1></div>
+      <span class="live-indicator"><i></i> Gateway connected</span>
+    </div>
+
+    @if (message()) { <div class="notice" role="status">{{ message() }}</div> }
+    @if (loading()) { <div class="panel loading-panel">Reading data from six services…</div> }
+
+    @if (!loading() && activeTab() === 'overview') {
+      <div class="metric-grid admin-metrics">
+        <div class="metric-card dark-card"><small>Products</small><strong>{{ products().length }}</strong><span>Catalog service</span></div>
+        <div class="metric-card"><small>Orders</small><strong>{{ orders().length }}</strong><span>Order service</span></div>
+        <div class="metric-card"><small>Payments</small><strong>{{ payments().length }}</strong><span>Payment service</span></div>
+        <div class="metric-card"><small>Shipments</small><strong>{{ shipments().length }}</strong><span>Shipping service</span></div>
+      </div>
+
+      <div class="overview-grid">
+        <article class="panel workflow-card">
+          <div><span class="eyebrow">Event workflow</span><h2>From click to doorstep</h2></div>
+          <div class="workflow-row"><span>1</span><div><strong>Order created</strong><small>OrderCreated goes to Kafka</small></div></div>
+          <div class="workflow-row"><span>2</span><div><strong>Stock reserved</strong><small>Inventory publishes StockReserved</small></div></div>
+          <div class="workflow-row"><span>3</span><div><strong>Payment confirmed</strong><small>Admin completes the demo payment</small></div></div>
+          <div class="workflow-row"><span>4</span><div><strong>Shipment created</strong><small>Assign carrier and update delivery status</small></div></div>
+        </article>
+        <article class="panel quick-actions">
+          <span class="eyebrow">Recommended setup order</span>
+          <h2>Prepare the storefront</h2>
+          <button type="button" (click)="setTab('catalog')"><strong>1. Create category & product</strong><span>Then change product status to ACTIVE →</span></button>
+          <button type="button" (click)="setTab('inventory')"><strong>2. Add warehouse stock</strong><span>Required before customers add to cart →</span></button>
+          <button type="button" (click)="setTab('payments')"><strong>3. Confirm demo payments</strong><span>Unlocks shipment creation →</span></button>
+        </article>
+      </div>
+    }
+
+    @if (!loading() && activeTab() === 'catalog') {
+      <div class="admin-form-grid">
+        <form #category="ngForm" class="panel form-panel" (ngSubmit)="createCategory(category)">
+          <span class="eyebrow">Product service</span><h2>New category</h2>
+          <label>Name<input name="categoryName" [(ngModel)]="categoryForm.name" required maxlength="100"></label>
+          <label>Code<input name="categoryCode" [(ngModel)]="categoryForm.code" required maxlength="50" placeholder="ELECTRONICS"></label>
+          <label>Description<textarea name="categoryDescription" [(ngModel)]="categoryForm.description" rows="3" maxlength="1000"></textarea></label>
+          <button class="button dark" type="submit">Create category</button>
+        </form>
+
+        <form #product="ngForm" class="panel form-panel" (ngSubmit)="createProduct(product)">
+          <span class="eyebrow">Product service</span><h2>New product</h2>
+          <div class="form-grid">
+            <label>SKU<input name="sku" [(ngModel)]="productForm.sku" required maxlength="80"></label>
+            <label>Name<input name="productName" [(ngModel)]="productForm.name" required maxlength="200"></label>
+            <label>Price<input name="price" [(ngModel)]="productForm.price" type="number" min="0.01" step="0.01" required></label>
+            <label>Currency<input name="currency" [(ngModel)]="productForm.currency" minlength="3" maxlength="3" required></label>
+            <label class="wide">Category<select name="categoryId" [(ngModel)]="productForm.categoryId" required><option [ngValue]="0">Choose category</option>@for (item of categories(); track item.id) {<option [ngValue]="item.id">{{ item.name }}</option>}</select></label>
+            <label class="wide">Image URL <small>(optional)</small><input name="imageUrl" [(ngModel)]="productForm.imageUrl" type="url"></label>
+            <label class="wide">Description<textarea name="productDescription" [(ngModel)]="productForm.description" rows="3" maxlength="3000"></textarea></label>
+          </div>
+          <button class="button primary" type="submit">Create product</button>
+        </form>
+      </div>
+
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">Categories</span><h2>{{ categories().length }} records</h2></div></div>
+        <div class="data-table">
+          <div class="table-row table-head"><span>Category</span><span>Code</span><span>Status</span><span>Action</span></div>
+          @for (item of categories(); track item.id) {
+            <div class="table-row"><span><strong>{{ item.name }}</strong><small>{{ item.description }}</small></span><span>{{ item.code }}</span><span class="status-pill">{{ item.active ? 'ACTIVE' : 'INACTIVE' }}</span><span><button class="text-button" type="button" (click)="toggleCategory(item)">{{ item.active ? 'Deactivate' : 'Activate' }}</button></span></div>
+          }
+        </div>
+      </div>
+
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">Products</span><h2>{{ products().length }} records</h2></div></div>
+        <div class="data-table products-table">
+          <div class="table-row table-head"><span>Product</span><span>Price</span><span>Status</span><span>Actions</span></div>
+          @for (item of products(); track item.id) {
+            <div class="table-row">
+              <span><strong>{{ item.name }}</strong><small>{{ item.sku }} · {{ item.category.name }}</small></span>
+              <span>{{ item.price | currency:item.currency }}</span>
+              <span class="status-pill">{{ item.status }}</span>
+              <span class="row-actions">
+                <select #productStatus [value]="item.status"><option>ACTIVE</option><option>INACTIVE</option><option>ARCHIVED</option></select>
+                <button class="text-button" type="button" (click)="setProductStatus(item, productStatus.value)">Save</button>
+                <button class="text-button" type="button" (click)="useProductForStock(item)">Add stock</button>
+              </span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (!loading() && activeTab() === 'inventory') {
+      <form #stock="ngForm" class="panel form-panel horizontal-form" (ngSubmit)="createStock(stock)">
+        <div><span class="eyebrow">Inventory service</span><h2>Create stock balance</h2><p>Select “Add stock” from Catalog to prefill product details.</p></div>
+        <div class="form-grid">
+          <label>Product ID<input name="stockProductId" [(ngModel)]="stockForm.productId" type="number" min="1" required></label>
+          <label>SKU<input name="stockSku" [(ngModel)]="stockForm.sku" required></label>
+          <label>Product name<input name="stockName" [(ngModel)]="stockForm.productName"></label>
+          <label>Warehouse<input name="warehouse" [(ngModel)]="stockForm.warehouseCode" required></label>
+          <label>Initial quantity<input name="quantity" [(ngModel)]="stockForm.quantity" type="number" min="0" required></label>
+          <label>Reason<input name="stockReason" [(ngModel)]="stockForm.reason"></label>
+        </div>
+        <button class="button primary" type="submit">Create stock</button>
+      </form>
+
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">Warehouse balances</span><h2>{{ stocks().length }} records</h2></div></div>
+        <div class="data-table inventory-table">
+          <div class="table-row table-head"><span>Product</span><span>Warehouse</span><span>Total</span><span>Reserved</span><span>Available</span><span>Actions</span></div>
+          @for (item of stocks(); track item.id) {
+            <div class="table-row"><span><strong>{{ item.productName }}</strong><small>{{ item.sku }} · ID {{ item.productId }}</small></span><span>{{ item.warehouseCode }}</span><span>{{ item.totalQuantity }}</span><span>{{ item.reservedQuantity }}</span><strong>{{ item.availableQuantity }}</strong><span class="row-actions"><button class="text-button" type="button" (click)="adjustStock(item, 'increase')">Increase</button><button class="text-button" type="button" (click)="adjustStock(item, 'decrease')">Decrease</button><button class="text-button" type="button" (click)="adjustStock(item, 'set')">Set total</button></span></div>
+          }
+        </div>
+      </div>
+    }
+
+    @if (!loading() && activeTab() === 'orders') {
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">Order service</span><h2>All orders</h2></div><button class="button ghost compact" type="button" (click)="loadAll()">Refresh events</button></div>
+        <div class="data-table orders-table">
+          <div class="table-row table-head"><span>Order</span><span>Customer</span><span>Total</span><span>Inventory</span><span>Payment</span><span>Status</span><span>Action</span></div>
+          @for (item of orders(); track item.id) {
+            <div class="table-row"><span><strong>{{ item.orderNumber }}</strong><small>{{ item.createdAt | date:'short' }}</small></span><span><strong>{{ item.customerName }}</strong><small>{{ item.customerEmail }}</small></span><span>{{ item.totalAmount | currency:item.currency }}</span><span class="status-pill">{{ item.inventoryStatus }}</span><span class="status-pill">{{ item.paymentStatus }}</span><span class="status-pill">{{ item.status }}</span><span><button class="text-button" type="button" (click)="updateOrder(item)">Change status</button></span></div>
+          } @empty { <div class="empty-state"><h3>No orders received</h3></div> }
+        </div>
+      </div>
+    }
+
+    @if (!loading() && activeTab() === 'payments') {
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">Payment service</span><h2>Demo payment attempts</h2></div></div>
+        <div class="data-table payments-table">
+          <div class="table-row table-head"><span>Reference</span><span>Order</span><span>Amount</span><span>Status</span><span>Actions</span></div>
+          @for (item of payments(); track item.id) {
+            <div class="table-row"><span><strong>{{ item.paymentReference }}</strong><small>{{ item.provider }}</small></span><span>{{ item.orderNumber }}</span><span>{{ item.amount | currency:item.currency }}</span><span class="status-pill">{{ item.status }}</span><span class="row-actions">@if (['PENDING', 'REDIRECT_CREATED'].includes(item.status)) {<button class="text-button success" type="button" (click)="paymentSuccess(item)">Mock success</button><button class="text-button danger" type="button" (click)="paymentFailure(item)">Mock failure</button>} @if (item.status === 'SUCCEEDED') {<button class="text-button" type="button" (click)="refund(item)">Refund</button>}</span></div>
+          } @empty { <div class="empty-state"><h3>No payment attempts</h3><p>Create an order and wait for the Kafka consumer.</p></div> }
+        </div>
+      </div>
+    }
+
+    @if (!loading() && activeTab() === 'shipping') {
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">Shipping service</span><h2>Fulfilment queue</h2></div></div>
+        <div class="data-table shipping-table">
+          <div class="table-row table-head"><span>Shipment</span><span>Order</span><span>Carrier / tracking</span><span>Status</span><span>Actions</span></div>
+          @for (item of shipments(); track item.id) {
+            <div class="table-row"><span><strong>{{ item.shipmentNumber }}</strong><small>{{ item.createdAt | date:'short' }}</small></span><span>{{ item.orderNumber }}</span><span><strong>{{ item.carrier || 'Unassigned' }}</strong><small>{{ item.trackingNumber || 'No tracking number' }}</small></span><span class="status-pill">{{ item.status }}</span><span class="row-actions"><button class="text-button" type="button" (click)="assignTracking(item)">Assign tracking</button><button class="text-button" type="button" (click)="updateShipment(item)">Update status</button></span></div>
+          } @empty { <div class="empty-state"><h3>No shipments</h3><p>Complete inventory reservation and payment first.</p></div> }
+        </div>
+      </div>
+    }
+
+    @if (!loading() && activeTab() === 'users') {
+      <div class="panel table-panel">
+        <div class="table-title"><div><span class="eyebrow">User service</span><h2>Customer profiles</h2></div></div>
+        <div class="data-table users-table">
+          <div class="table-row table-head"><span>User</span><span>Email</span><span>Phone</span><span>Status</span><span>Action</span></div>
+          @for (item of users(); track item.id) {
+            <div class="table-row"><span><strong>{{ item.name }}</strong><small>ID {{ item.id }}</small></span><span>{{ item.email }}</span><span>{{ item.phone }}</span><span class="status-pill">{{ item.status }}</span><span><button class="text-button" type="button" (click)="updateUser(item)">Change status</button></span></div>
+          } @empty { <div class="empty-state"><h3>No user-service profiles</h3><p>Keycloak users create a profile from My Account.</p></div> }
+        </div>
+      </div>
+    }
+  </div>
+</section>

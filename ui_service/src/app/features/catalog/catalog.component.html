@@ -1,0 +1,102 @@
+<section class="hero page-shell">
+  <div class="hero-copy">
+    <span class="eyebrow">Microservices, connected</span>
+    <h1>Everything you need.<br><em>One clean storefront.</em></h1>
+    <p>Browse the live product catalog, check real-time inventory, and follow every order from payment to delivery.</p>
+    <a class="button primary" href="#catalog">Explore products</a>
+  </div>
+  <div class="hero-panel" aria-label="Platform overview">
+    <div class="orbit orbit-one"></div>
+    <div class="orbit orbit-two"></div>
+    <div class="hero-card main-card">
+      <span class="card-icon">↗</span>
+      <small>Unified API</small>
+      <strong>6 services</strong>
+      <p>One secure gateway</p>
+    </div>
+    <div class="hero-card mini-card top"><small>Live stock</small><strong>Instant</strong></div>
+    <div class="hero-card mini-card bottom"><small>Order flow</small><strong>Event-driven</strong></div>
+  </div>
+</section>
+
+<section class="trust-strip">
+  <span>Secure Keycloak login</span>
+  <span>Live inventory</span>
+  <span>Google Pay demo flow</span>
+  <span>End-to-end shipment tracking</span>
+</section>
+
+<section id="catalog" class="page-shell catalog-section">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Live catalog</span>
+      <h2>Find your next pick</h2>
+    </div>
+    <button class="text-button" type="button" (click)="clearFilters()">Clear filters</button>
+  </div>
+
+  <form class="filter-bar" (ngSubmit)="loadProducts()">
+    <label class="search-field">
+      <span>⌕</span>
+      <input name="search" [(ngModel)]="search" placeholder="Search products or SKU" aria-label="Search products">
+    </label>
+    <select name="category" [(ngModel)]="categoryId" aria-label="Filter by category">
+      <option [ngValue]="undefined">All categories</option>
+      @for (category of categories(); track category.id) {
+        <option [ngValue]="category.id">{{ category.name }}</option>
+      }
+    </select>
+    <button class="button dark" type="submit">Search</button>
+  </form>
+
+  @if (message()) {
+    <div class="notice" role="status">{{ message() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="product-grid" aria-label="Loading products">
+      @for (slot of [1, 2, 3, 4]; track slot) {
+        <div class="product-card skeleton"><div></div><span></span><span></span></div>
+      }
+    </div>
+  } @else if (products().length === 0) {
+    <div class="empty-state">
+      <span>◇</span>
+      <h3>No products found</h3>
+      <p>Try a different search or create an active product from Operations.</p>
+      <button class="button ghost" type="button" (click)="clearFilters()">Reset catalog</button>
+    </div>
+  } @else {
+    <div class="product-grid">
+      @for (product of products(); track product.id) {
+        <article class="product-card">
+          <div class="product-image" [class.no-image]="!product.imageUrl">
+            @if (product.imageUrl) {
+              <img [src]="product.imageUrl" [alt]="product.name">
+            } @else {
+              <span>{{ product.name.charAt(0) }}</span>
+            }
+            <small>{{ product.category.name }}</small>
+          </div>
+          <div class="product-body">
+            <span class="sku">{{ product.sku }}</span>
+            <h3>{{ product.name }}</h3>
+            <p>{{ product.description || 'A catalog item ready for your next order.' }}</p>
+            <div class="product-footer">
+              <strong>{{ product.price | currency:product.currency:'symbol':'1.0-2' }}</strong>
+              <button class="round-button" type="button" (click)="addToCart(product)" [attr.aria-label]="'Add ' + product.name + ' to cart'">+</button>
+            </div>
+          </div>
+        </article>
+      }
+    </div>
+
+    @if (totalPages() > 1) {
+      <div class="pagination">
+        <button class="button ghost compact" type="button" [disabled]="currentPage() === 0" (click)="loadProducts(currentPage() - 1)">Previous</button>
+        <span>Page {{ currentPage() + 1 }} of {{ totalPages() }}</span>
+        <button class="button ghost compact" type="button" [disabled]="currentPage() + 1 >= totalPages()" (click)="loadProducts(currentPage() + 1)">Next</button>
+      </div>
+    }
+  }
+</section>

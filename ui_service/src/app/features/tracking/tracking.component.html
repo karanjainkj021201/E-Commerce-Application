@@ -1,0 +1,42 @@
+<section class="tracking-hero">
+  <div class="page-shell tracking-shell">
+    <span class="eyebrow light">Public tracking</span>
+    <h1>Follow the journey.</h1>
+    <p>No login needed. Enter the carrier tracking number assigned by an administrator.</p>
+    <form class="tracking-search" (ngSubmit)="track()">
+      <input name="trackingNumber" [(ngModel)]="trackingNumber" placeholder="Example: BLUEDART-12345" required aria-label="Tracking number">
+      <button class="button accent" type="submit" [disabled]="loading()">{{ loading() ? 'Searching…' : 'Track package' }}</button>
+    </form>
+  </div>
+</section>
+
+<section class="page-shell tracking-result-section">
+  @if (error()) {
+    <div class="notice error" role="alert">{{ error() }}</div>
+  }
+
+  @if (result(); as shipment) {
+    <div class="tracking-summary panel">
+      <div><small>Shipment</small><h2>{{ shipment.shipmentNumber }}</h2><span>Order {{ shipment.orderNumber }}</span></div>
+      <div><small>Carrier</small><strong>{{ shipment.carrier || 'Pending' }}</strong></div>
+      <div><small>Current status</small><span class="status-pill large">{{ shipment.status }}</span></div>
+    </div>
+
+    <div class="timeline panel">
+      <h2>Shipment timeline</h2>
+      @for (event of shipment.statusHistory; track event.id; let last = $last) {
+        <div class="timeline-row" [class.last]="last">
+          <span class="timeline-dot">✓</span>
+          <div><strong>{{ event.status }}</strong><p>{{ event.note || 'Shipment status updated' }}</p></div>
+          <time>{{ event.occurredAt | date:'medium' }}</time>
+        </div>
+      }
+    </div>
+  } @else if (!error() && !loading()) {
+    <div class="tracking-placeholder">
+      <span>⌖</span>
+      <h2>Your delivery timeline will appear here</h2>
+      <p>Tracking becomes available after an administrator assigns a carrier and tracking number.</p>
+    </div>
+  }
+</section>

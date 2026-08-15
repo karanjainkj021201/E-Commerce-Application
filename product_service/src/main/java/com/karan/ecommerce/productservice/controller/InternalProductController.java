@@ -16,7 +16,7 @@ public class InternalProductController {
     }
 
     @GetMapping("/{id}/snapshot")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SERVICE')")
+    @PreAuthorize("isAuthenticated()")
     public ProductSnapshotResponse getProductSnapshot(@PathVariable Long id) {
         return productService.getProductSnapshot(id);
     }

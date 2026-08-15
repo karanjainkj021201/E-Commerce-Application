@@ -1,0 +1,45 @@
+<header class="site-header">
+  <a class="brand" routerLink="/" (click)="menuOpen.set(false)" aria-label="Karan Commerce home">
+    <span class="brand-mark">KC</span>
+    <span><strong>Karan</strong> Commerce</span>
+  </a>
+
+  <button class="menu-toggle" type="button" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle menu">☰</button>
+
+  <nav [class.open]="menuOpen()">
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="menuOpen.set(false)">Shop</a>
+    <a routerLink="/track" routerLinkActive="active" (click)="menuOpen.set(false)">Track</a>
+    @if (auth.authenticated()) {
+      <a routerLink="/account" routerLinkActive="active" (click)="menuOpen.set(false)">My account</a>
+    }
+    @if (auth.isAdmin()) {
+      <a routerLink="/admin" routerLinkActive="active" (click)="menuOpen.set(false)">Operations</a>
+    }
+  </nav>
+
+  <div class="header-actions">
+    <a class="cart-link" routerLink="/cart" aria-label="Open cart">Cart <span>{{ cart.count() }}</span></a>
+    @if (auth.authenticated()) {
+      <button class="button ghost compact" type="button" (click)="logout()">Sign out</button>
+    } @else {
+      <button class="button ghost compact hide-mobile" type="button" (click)="register()">Register</button>
+      <button class="button primary compact" type="button" (click)="login()">Sign in</button>
+    }
+  </div>
+</header>
+
+<main>
+  <router-outlet />
+</main>
+
+<footer>
+  <div>
+    <strong>Karan Commerce</strong>
+    <p>Angular storefront · Spring Cloud Gateway · Six Spring Boot microservices</p>
+  </div>
+  <div class="footer-links">
+    <a routerLink="/">Catalog</a>
+    <a routerLink="/track">Track shipment</a>
+    <a href="http://localhost:8087/actuator/health" target="_blank" rel="noopener">API status</a>
+  </div>
+</footer>

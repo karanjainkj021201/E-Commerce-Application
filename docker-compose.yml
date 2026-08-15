@@ -3,22 +3,33 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     container_name: keycloak
-    command: start-dev --hostname=keycloak --hostname-strict=false
+
+    command:
+      - start-dev
+      - --hostname=http://localhost:8080
+      - --hostname-backchannel-dynamic=true
+
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+
     ports:
       - "8080:8080"
+
     volumes:
       - keycloak_data:/opt/keycloak/data
+
     networks:
       - ecommerce-network
+
 
   kafka:
     image: apache/kafka:latest
     container_name: kafka
+
     ports:
       - "9092:9092"
+
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -28,7 +39,6 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
@@ -41,6 +51,152 @@ services:
 
     networks:
       - ecommerce-network
+
+
+  user-service:
+    build: ./user_service
+    container_name: user-service
+
+    ports:
+      - "8081:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+
+    depends_on:
+      - keycloak
+
+    volumes:
+      - user_data:/data
+
+    networks:
+      - ecommerce-network
+
+
+  product-service:
+    build: ./product_service
+    container_name: product-service
+
+    ports:
+      - "8082:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+
+    depends_on:
+      - keycloak
+
+    volumes:
+      - product_data:/data
+
+    networks:
+      - ecommerce-network
+
+
+  order-service:
+    build: ./order_service
+    container_name: order-service
+
+    ports:
+      - "8083:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+
+    depends_on:
+      - keycloak
+      - kafka
+      - user-service
+      - product-service
+
+    volumes:
+      - order_data:/data
+
+    networks:
+      - ecommerce-network
+
+
+  inventory-service:
+    build: ./inventory_service
+    container_name: inventory-service
+
+    ports:
+      - "8084:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+
+    depends_on:
+      - keycloak
+      - kafka
+
+    volumes:
+      - inventory_data:/data
+
+    networks:
+      - ecommerce-network
+
+
+  payment-service:
+    build: ./payment_service
+    container_name: payment-service
+
+    ports:
+      - "8085:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+
+    depends_on:
+      - keycloak
+      - kafka
+      - order-service
+
+    volumes:
+      - payment_data:/data
+
+    networks:
+      - ecommerce-network
+
+
+  shipping-service:
+    build:
+      context: ./shipping_service
+      dockerfile: Dockerfile
+
+    container_name: shipping-service
+
+    ports:
+      - "8086:8080"
+
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/ecommerce
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
+      SHIPPING_EVENTS_ENABLED: "true"
+
+    depends_on:
+      - kafka
+      - keycloak
+
+    volumes:
+      - shipping-data:/data
+
+    networks:
+      - ecommerce-network
+
+    restart: unless-stopped
 
 
   api-gateway:
@@ -79,113 +235,26 @@ services:
 
     restart: unless-stopped
 
-  user-service:
-    build: ./user_service
-    container_name: user-service
-    ports:
-      - "8081:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-    depends_on:
-      - keycloak
-    volumes:
-      - user_data:/data
-    networks:
-      - ecommerce-network
 
-  product-service:
-    build: ./product_service
-    container_name: product-service
-    ports:
-      - "8082:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-    depends_on:
-      - keycloak
-    volumes:
-      - product_data:/data
-    networks:
-      - ecommerce-network
-
-  order-service:
-    build: ./order_service
-    container_name: order-service
-    ports:
-      - "8083:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-    depends_on:
-      - keycloak
-      - kafka
-      - user-service
-      - product-service
-    volumes:
-      - order_data:/data
-    networks:
-      - ecommerce-network
-
-  inventory-service:
-    build: ./inventory_service
-    container_name: inventory-service
-    ports:
-      - "8084:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-    depends_on:
-      - keycloak
-      - kafka
-    volumes:
-      - inventory_data:/data
-    networks:
-      - ecommerce-network
-
-  payment-service:
-    build: ./payment_service
-    container_name: payment-service
-    ports:
-      - "8085:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-    depends_on:
-      - keycloak
-      - kafka
-      - order-service
-    volumes:
-      - payment_data:/data
-    networks:
-      - ecommerce-network
-
-  shipping-service:
-    build:
-      context: ./shipping_service
-      dockerfile: Dockerfile
-
-    container_name: shipping-service
+  ui-service:
+    build: ./ui_service
+    container_name: ui-service
 
     ports:
-      - "8086:8080"
-
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/ecommerce
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/ecommerce/protocol/openid-connect/certs
-      SHIPPING_EVENTS_ENABLED: "true"
+      - "4200:80"
 
     depends_on:
-      - kafka
-      - keycloak
-
-    volumes:
-      - shipping-data:/data
+      - api-gateway
 
     networks:
       - ecommerce-network
 
     restart: unless-stopped
 
+
 networks:
   ecommerce-network:
+
 
 volumes:
   keycloak_data:
@@ -196,4 +265,3 @@ volumes:
   inventory_data:
   payment_data:
   shipping-data:
-  
