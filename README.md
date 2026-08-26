@@ -1,5 +1,7 @@
 # Karan Commerce — E-Commerce Microservices Application
 
+Video demo attached with repo (Not End to End)
+
 Karan Commerce is a complete learning and portfolio project that demonstrates how an e-commerce application can be built using independent Spring Boot microservices, Kafka events, Keycloak authentication, an API Gateway, and an Angular frontend.
 
 The application supports:
